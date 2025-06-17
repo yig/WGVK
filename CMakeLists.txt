@@ -9,8 +9,36 @@ target_compile_definitions(wgvk PUBLIC RG_STATIC=1)
 
 
 target_include_directories(wgvk PUBLIC include)
-target_compile_definitions(wgvk PUBLIC SUPPORT_XLIB_SURFACE=1)
 
+
+if(WIN32)
+    target_compile_definitions(wgvk PUBLIC SUPPORT_WIN32_SURFACE=1)
+# For Apple (macOS, iOS) using Metal
+elseif(APPLE)
+    target_compile_definitions(wgvk PUBLIC SUPPORT_METAL_SURFACE=1)
+    # Link against frameworks required for a CAMetalLayer surface
+    target_link_libraries(wgvk PUBLIC "-framework Cocoa" "-framework Metal" "-framework QuartzCore")
+# For other Unix-like systems (primarily Linux)
+elseif(UNIX)
+    find_package(PkgConfig QUIET)
+        
+    # Wayland Check
+    pkg_check_modules(WAYLAND_CLIENT QUIET wayland-client)
+    if(WAYLAND_CLIENT_FOUND)
+        message(STATUS "Wayland found")
+        target_compile_definitions(wgvk PUBLIC SUPPORT_WAYLAND_SURFACE=1)
+        set(GLFW_BUILD_WAYLAND ON)
+        target_link_libraries(wgvk PUBLIC wayland-client)
+    endif()
+
+    # Check for X11 (Xlib) support
+    find_package(X11 QUIET)
+    if(X11_FOUND)
+        set(GLFW_BUILD_X11 ON)
+        target_compile_definitions(wgvk PUBLIC SUPPORT_XLIB_SURFACE=1)
+        target_link_libraries(wgvk PUBLIC X11::X11)
+    endif()
+endif()
 
 if(WGVK_BUILD_EXAMPLES)
     FetchContent_Declare(

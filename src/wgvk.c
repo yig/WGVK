@@ -1998,6 +1998,71 @@ static inline VkClearValue toVkCV(const WGPUColor c){
         }
     };
 };
+
+WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, const WGPURenderBundleEncoderDescriptor* descriptor){
+    WGPURenderBundleEncoder ret = RL_CALLOC(1, sizeof(WGPURenderBundleEncoderImpl));
+    ret->refCount = 1;
+    ret->device = device;
+
+    ret->cacheIndex = device->submittedFrames % framesInFlight;
+    PerframeCache* cache = &device->frameCaches[ret->cacheIndex];
+    ret->device = device;
+    ret->movedFrom = 0;
+    
+    if(VkCommandBufferVector_empty(&device->frameCaches[ret->cacheIndex].commandBuffers)){
+        VkCommandBufferAllocateInfo bai = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = cache->commandPool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+        device->functions.vkAllocateCommandBuffers(device->device, &bai, &ret->buffer);
+    }
+    else{
+        ret->buffer = device->frameCaches[ret->cacheIndex].commandBuffers.data[device->frameCaches[ret->cacheIndex].commandBuffers.size - 1];
+        VkCommandBufferVector_pop_back(&device->frameCaches[ret->cacheIndex].commandBuffers);
+    }
+
+
+    #if VULKAN_USE_DYNAMIC_RENDERING == 1
+    VkFormat vkFormats[MAX_COLOR_ATTACHMENTS] = {0};
+    for(uint32_t i = 0;i < descriptor->colorFormatCount;i++){
+        vkFormats[i] = toVulkanPixelFormat(descriptor->colorFormats[i]);
+    }
+    VkFormat depthFormat = toVulkanPixelFormat(descriptor->depthStencilFormat);
+
+    VkCommandBufferInheritanceRenderingInfo renderingInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
+        .pNext = NULL,
+        .colorAttachmentCount = descriptor->colorFormatCount,
+        .pColorAttachmentFormats = vkFormats,
+        .depthAttachmentFormat = depthFormat,
+        .stencilAttachmentFormat = depthFormat,
+        .rasterizationSamples = descriptor->sampleCount
+    };
+
+    VkCommandBufferBeginInfo beginInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+        .pNext = &renderingInfo,
+        .pInheritanceInfo = NULL
+    };
+    #else
+    wgvk_assert(false, "Dynamic rendering is required for render bundles");
+    #endif
+    return ret;
+
+}
+WGPURenderBundle wgpuRenderBundleEncoderFinish(WGPURenderBundleEncoder renderBundleEncoder, WGPU_NULLABLE WGPURenderBundleDescriptor const * descriptor){
+    
+    
+    
+    //GetRenderPassLayout(
+    //    
+    //);
+    
+}
+
 WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, const WGPURenderPassDescriptor* rpdesc){
     WGPURenderPassEncoder ret = RL_CALLOC(1, sizeof(WGPURenderPassEncoderImpl));
     VkCommandPool pool = enc->device->frameCaches[enc->cacheIndex].commandPool;

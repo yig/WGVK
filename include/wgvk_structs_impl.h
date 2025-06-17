@@ -1711,6 +1711,21 @@ typedef struct WGPUComputePassEncoderImpl{
     WGPUBindGroup bindGroups[8];
 }WGPUComputePassEncoderImpl;
 
+
+typedef struct WGPURenderBundleImpl{
+    VkCommandBuffer commandBuffer;
+    WGPUDevice device;
+    uint32_t refCount;
+}WGPURenderBundleImpl;
+
+typedef struct WGPURenderBundleEncoderImpl{
+    VkCommandBuffer buffer;
+    WGPUDevice device;
+    uint32_t refCount;
+    uint32_t cacheIndex;
+    WGPUBool movedFrom;
+}WGPURenderBundleEncoderImpl;
+
 void RenderPassEncoder_PushCommand(WGPURenderPassEncoder, const RenderPassCommandGeneric* cmd);
 void ComputePassEncoder_PushCommand(WGPUComputePassEncoder, const RenderPassCommandGeneric* cmd);
 

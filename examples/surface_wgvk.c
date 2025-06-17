@@ -148,7 +148,7 @@ int main(){
     GLFWwindow* window = glfwCreateWindow(800, 600, "WGVK Window", NULL, NULL);
     glfwSetKeyCallback(window, keyfunc);
     #ifdef _WIN32
-    WGPUSurfaceSourceWindowsHWND surfaceChain = {
+    WGPUSurfaceSourceWindowsHWND surfaceChainObj = {
         .chain = {
             .sType = WGPUSType_SurfaceSourceWindowsHWND,
             .next = NULL
@@ -156,30 +156,38 @@ int main(){
         .hwnd = glfwGetWin32Window(window),
         .hinstance = GetModuleHandle(NULL)
     };
-    #else    
-    WGPUSurfaceSourceXlibWindow surfaceChain;
+    WGPUChainedStruct* surfaceChain = &surfaceChainObj;
+    #else
+    WGPUSurfaceSourceXlibWindow surfaceChainX11;
     Display* x11_display = glfwGetX11Display();
     Window x11_window = glfwGetX11Window(window);
-    surfaceChain.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
-    surfaceChain.chain.next = NULL;
-    surfaceChain.display = x11_display;
-    surfaceChain.window = x11_window;
+    surfaceChainX11.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
+    surfaceChainX11.chain.next = NULL;
+    surfaceChainX11.display = x11_display;
+    surfaceChainX11.window = x11_window;
 
-    //struct wl_display* native_display = glfwGetWaylandDisplay();
-    //struct wl_surface* native_surface = glfwGetWaylandWindow(window);
-    //WGPUSurfaceSourceWaylandSurface surfaceChain;
-    //surfaceChain.chain.sType = WGPUSType_SurfaceSourceWaylandSurface;
-    //surfaceChain.chain.next = NULL;
-    //surfaceChain.display = native_display;
-    //surfaceChain.surface = native_surface;
+    struct wl_display* native_display = glfwGetWaylandDisplay();
+    struct wl_surface* native_surface = glfwGetWaylandWindow(window);
+    WGPUSurfaceSourceWaylandSurface surfaceChainWayland;
+    surfaceChainWayland.chain.sType = WGPUSType_SurfaceSourceWaylandSurface;
+    surfaceChainWayland.chain.next = NULL;
+    surfaceChainWayland.display = native_display;
+    surfaceChainWayland.surface = native_surface;
+    WGPUChainedStruct* surfaceChain = NULL;
+    if(x11_window == 0){
+        surfaceChain = (WGPUChainedStruct*)&surfaceChainWayland;
+    }
+    else{
+        surfaceChain = (WGPUChainedStruct*)&surfaceChainX11;
+    }
     #endif
     WGPUSurfaceDescriptor surfaceDescriptor;
-    surfaceDescriptor.nextInChain = &surfaceChain.chain;
+    surfaceDescriptor.nextInChain = surfaceChain;
     surfaceDescriptor.label = (WGPUStringView){ NULL, WGPU_STRLEN };
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     WGPUSurfaceCapabilities caps = {0};
-    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Immediate;
+    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Fifo;
     WGPUSurface surface = wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);

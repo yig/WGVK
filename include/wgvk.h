@@ -50,6 +50,8 @@ struct WGPUBufferImpl;
 struct WGPUFutureImpl;
 struct WGPURenderPassEncoderImpl;
 struct WGPUComputePassEncoderImpl;
+struct WGPURenderBundleImpl;
+struct WGPURenderBundleEncoderImpl;
 struct WGPUCommandEncoderImpl;
 struct WGPUCommandBufferImpl;
 struct WGPUTextureImpl;
@@ -78,6 +80,8 @@ typedef struct WGPUAdapterImpl* WGPUAdapter;
 typedef struct WGPUDeviceImpl* WGPUDevice;
 typedef struct WGPURenderPassEncoderImpl* WGPURenderPassEncoder;
 typedef struct WGPUComputePassEncoderImpl* WGPUComputePassEncoder;
+typedef struct WGPURenderBundleImpl* WGPURenderBundle;
+typedef struct WGPURenderBundleEncoderImpl* WGPURenderBundleEncoder;
 typedef struct WGPUCommandBufferImpl* WGPUCommandBuffer;
 typedef struct WGPUCommandEncoderImpl* WGPUCommandEncoder;
 typedef struct WGPUTextureImpl* WGPUTexture;
@@ -932,6 +936,22 @@ typedef struct WGPURenderPassDescriptor {
     /*WGPU_NULLABLE*/ void* timestampWrites;
 } WGPURenderPassDescriptor;
 
+typedef struct WGPURenderBundleDescriptor {
+    WGPUChainedStruct * nextInChain;
+    WGPUStringView label;
+}WGPURenderBundleDescriptor;
+
+typedef struct WGPURenderBundleEncoderDescriptor {
+    WGPUChainedStruct* nextInChain;
+    WGPUStringView label;
+    size_t colorFormatCount;
+    const WGPUTextureFormat* colorFormats;
+    WGPUTextureFormat depthStencilFormat;
+    uint32_t sampleCount;
+    WGPUBool depthReadOnly;
+    WGPUBool stencilReadOnly;
+}WGPURenderBundleEncoderDescriptor;
+
 typedef struct WGPUCommandEncoderDescriptor{
     WGPUChainedStruct* nextInChain;
     WGPUStringView label;
@@ -1458,6 +1478,8 @@ WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder enc
 void wgpuComputePassEncoderEnd(WGPUComputePassEncoder commandEncoder);
 WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, const WGPURenderPassDescriptor* rpdesc);
 
+WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, WGPURenderBundleEncoderDescriptor const * descriptor);
+WGPURenderBundle wgpuRenderBundleEncoderFinish(WGPURenderBundleEncoder renderBundleEncoder, WGPU_NULLABLE WGPURenderBundleDescriptor const * descriptor);
 void wgpuInstanceAddRef                       (WGPUInstance instance);
 void wgpuAdapterAddRef                        (WGPUAdapter adapter);
 void wgpuDeviceAddRef                         (WGPUDevice device);
