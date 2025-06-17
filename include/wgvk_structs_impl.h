@@ -920,6 +920,7 @@ typedef enum RCPassCommandType{
     rp_command_type_set_index_buffer,
     rp_command_type_set_bind_group,
     rp_command_type_set_render_pipeline,
+    rp_command_type_execute_renderbundles,
     cp_command_type_set_compute_pipeline,
     cp_command_type_dispatch_workgroups,
     rp_command_type_enum_count,
@@ -964,6 +965,11 @@ typedef struct RenderPassCommandSetIndexBuffer {
 typedef struct RenderPassCommandSetPipeline {
     WGPURenderPipeline pipeline;
 } RenderPassCommandSetPipeline;
+
+typedef struct RenderPassCommandExecuteRenderbundles{
+    const WGPURenderBundle* renderBundles;
+    uint32_t renderBundleCount;
+}RenderPassCommandExecuteRenderbundles;
 
 typedef struct ComputePassCommandSetPipeline {
     WGPUComputePipeline pipeline;
@@ -1017,6 +1023,7 @@ typedef struct RenderPassCommandGeneric {
         RenderPassCommandSetIndexBuffer setIndexBuffer;
         RenderPassCommandSetBindGroup setBindGroup;
         RenderPassCommandSetPipeline setRenderPipeline;
+        RenderPassCommandExecuteRenderbundles executeRenderBundles;
         ComputePassCommandSetPipeline setComputePipeline;
         ComputePassCommandDispatchWorkgroups dispatchWorkgroups;
     };
@@ -1311,6 +1318,7 @@ static size_t renderPassLayoutHash(RenderPassLayout layout){
 typedef struct PerframeCache{
     VkCommandPool commandPool;
     VkCommandBufferVector commandBuffers;
+    VkCommandBufferVector secondaryCommandBuffers;
 
     WGPUBufferVector unusedBatchBuffers;
     WGPUBufferVector usedBatchBuffers;
@@ -1496,7 +1504,7 @@ typedef struct WGPUDeviceImpl{
 
     VmaPool aligned_hostVisiblePool;
     PerframeCache frameCaches[framesInFlight];
-
+    VkCommandPool secondaryCommandPool;
     RenderPassCache renderPassCache;
     WGPUUncapturedErrorCallbackInfo uncapturedErrorCallbackInfo;
     FenceCache fenceCache;
@@ -1719,11 +1727,12 @@ typedef struct WGPURenderBundleImpl{
 }WGPURenderBundleImpl;
 
 typedef struct WGPURenderBundleEncoderImpl{
-    VkCommandBuffer buffer;
+    RenderPassCommandGenericVector bufferedCommands;
     WGPUDevice device;
     uint32_t refCount;
     uint32_t cacheIndex;
     WGPUBool movedFrom;
+    WGPUPipelineLayout lastLayout;
 }WGPURenderBundleEncoderImpl;
 
 void RenderPassEncoder_PushCommand(WGPURenderPassEncoder, const RenderPassCommandGeneric* cmd);

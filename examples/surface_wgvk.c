@@ -102,11 +102,10 @@ int main(){
     WGPUInstanceDescriptor instanceDescriptor = {
         .nextInChain = 
         #ifdef NDEBUG
-        NULL
+        NULL,
         #else
-        &lsel.chain
+        &lsel.chain,
         #endif
-        ,
         .capabilities = {0}
     };
 
@@ -199,6 +198,8 @@ int main(){
         .width = width,
         .height = height
     });
+    
+    
     //WGPUShaderSourceWGSL shaderSourceWgsl = {
     //    .chain = {
     //        .sType = WGPUSType_ShaderSourceWGSL
@@ -290,7 +291,20 @@ int main(){
     };
     WGPUBuffer vertexBuffer = wgpuDeviceCreateBuffer(device, &bufferDescriptor);
     wgpuQueueWriteBuffer(queue, vertexBuffer, 0, vertices, sizeof(vertices));
+    
+    WGPURenderBundleEncoderDescriptor rbEncDesc = {
+        .colorFormatCount = 1,
+        .colorFormats = &colorTargetState.format,
+        .depthStencilFormat = WGPUTextureFormat_Undefined,
+        .sampleCount = 1
+    };
+    WGPURenderBundleEncoder rbEnc = wgpuDeviceCreateRenderBundleEncoder(device, &rbEncDesc);
+    wgpuRenderBundleEncoderSetPipeline(rbEnc, rp);
+    wgpuRenderBundleEncoderSetVertexBuffer(rbEnc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
+    wgpuRenderBundleEncoderDraw(rbEnc, 3, 1, 0, 0);
+    WGPURenderBundle renderBundle = wgpuRenderBundleEncoderFinish(rbEnc, NULL);    
     WGPUSurfaceTexture surfaceTexture;
+
     uint64_t stamp = nanoTime();
     uint64_t frameCount = 0;
     while(!glfwWindowShouldClose(window)){
@@ -331,9 +345,10 @@ int main(){
             .colorAttachments = &colorAttachment,
         });
     
-        wgpuRenderPassEncoderSetPipeline(rpenc, rp);
-        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0);
-        wgpuRenderpassEncoderDraw(rpenc, 3, 1, 0, 0);
+        //wgpuRenderPassEncoderSetPipeline(rpenc, rp);
+        //wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0);
+        //wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
+        wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
         wgpuRenderPassEncoderEnd(rpenc);
         
         WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(cenc, NULL);

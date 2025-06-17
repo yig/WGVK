@@ -1032,6 +1032,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
     };
+    retDevice->functions.vkCreateCommandPool(retDevice->device, &pci, NULL, &retDevice->secondaryCommandPool);
     
     WGPUCommandEncoderDescriptor cedesc = {
         .recyclable = true,
@@ -2004,24 +2005,22 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
     ret->refCount = 1;
     ret->device = device;
 
-    ret->cacheIndex = device->submittedFrames % framesInFlight;
-    PerframeCache* cache = &device->frameCaches[ret->cacheIndex];
     ret->device = device;
     ret->movedFrom = 0;
     
-    if(VkCommandBufferVector_empty(&device->frameCaches[ret->cacheIndex].commandBuffers)){
-        VkCommandBufferAllocateInfo bai = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = cache->commandPool,
-            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 1,
-        };
-        device->functions.vkAllocateCommandBuffers(device->device, &bai, &ret->buffer);
-    }
-    else{
-        ret->buffer = device->frameCaches[ret->cacheIndex].commandBuffers.data[device->frameCaches[ret->cacheIndex].commandBuffers.size - 1];
-        VkCommandBufferVector_pop_back(&device->frameCaches[ret->cacheIndex].commandBuffers);
-    }
+    //if(VkCommandBufferVector_empty(&device->secondaryCommandBuffers)){
+    VkCommandBufferAllocateInfo bai = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = device->secondaryCommandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+        .commandBufferCount = 1
+    };
+    //device->functions.vkAllocateCommandBuffers(device->device, &bai, &ret->buffer);
+    //}
+    //else{
+    //    ret->buffer = device->frameCaches[ret->cacheIndex].secondaryCommandBuffers.data[device->frameCaches[ret->cacheIndex].secondaryCommandBuffers.size - 1];
+    //    VkCommandBufferVector_pop_back(&device->frameCaches[ret->cacheIndex].secondaryCommandBuffers);
+    //}
 
 
     #if VULKAN_USE_DYNAMIC_RENDERING == 1
@@ -2033,7 +2032,6 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
 
     VkCommandBufferInheritanceRenderingInfo renderingInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
-        .pNext = NULL,
         .colorAttachmentCount = descriptor->colorFormatCount,
         .pColorAttachmentFormats = vkFormats,
         .depthAttachmentFormat = depthFormat,
@@ -2041,12 +2039,32 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
         .rasterizationSamples = descriptor->sampleCount
     };
 
+    VkCommandBufferInheritanceInfo inheritanceInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+        .pNext = &renderingInfo,
+    };
+
     VkCommandBufferBeginInfo beginInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-        .pNext = &renderingInfo,
-        .pInheritanceInfo = NULL
+        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+        .pInheritanceInfo = &inheritanceInfo
     };
+    //device->functions.vkBeginCommandBuffer(ret->buffer, &beginInfo);
+    VkViewport viewPort = {
+        0,0,1920,1080,0,1
+    };
+    VkRect2D scissor = {
+        .offset = {0,0},
+        .extent = {1080,1080}
+    };
+    //device->functions.vkCmdSetViewport(ret->buffer, 0, 1, &viewPort);
+    //device->functions.vkCmdSetScissor (ret->buffer, 0, 1, &scissor);
+    
+    //VkViewport dummy_viewport = { 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
+    //VkRect2D dummy_scissor = { {0, 0}, {1, 1} };
+    //vkCmdSetViewport(ret->buffer, 0, 1, &dummy_viewport);
+    //vkCmdSetScissor (ret->buffer, 0, 1, &dummy_scissor);
+    
     #else
     wgvk_assert(false, "Dynamic rendering is required for render bundles");
     #endif
@@ -2054,14 +2072,136 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
 
 }
 WGPURenderBundle wgpuRenderBundleEncoderFinish(WGPURenderBundleEncoder renderBundleEncoder, WGPU_NULLABLE WGPURenderBundleDescriptor const * descriptor){
-    
-    
-    
-    //GetRenderPassLayout(
-    //    
-    //);
-    
+    WGPURenderBundle ret = RL_CALLOC(1, sizeof(WGPURenderBundleImpl));
+    renderBundleEncoder->movedFrom = 1;
+    ret->device = renderBundleEncoder->device;
+    ret->device->functions.vkEndCommandBuffer(ret->commandBuffer);
+    ret->refCount = 1;
+    return ret;
 }
+
+
+void wgpuRenderBundleEncoderDraw(WGPURenderBundleEncoder renderBundleEncoder, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_draw,
+        .draw = {
+            vertexCount,
+            instanceCount,
+            firstVertex,
+            firstInstance
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderDrawIndexed(WGPURenderBundleEncoder renderBundleEncoder, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_draw_indexed,
+        .drawIndexed = {
+            indexCount,
+            instanceCount,
+            firstIndex,
+            baseVertex,
+            firstInstance
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderDrawIndexedIndirect(WGPURenderBundleEncoder renderBundleEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_draw_indexed_indirect,
+        .drawIndexedIndirect = {
+            indirectBuffer,
+            indirectOffset
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderDrawIndirect(WGPURenderBundleEncoder renderBundleEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_draw_indirect,
+        .drawIndirect = {
+            indirectBuffer,
+            indirectOffset
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderSetBindGroup(WGPURenderBundleEncoder renderBundleEncoder, uint32_t groupIndex, WGPU_NULLABLE WGPUBindGroup group, size_t dynamicOffsetCount, const uint32_t* dynamicOffsets) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_set_bind_group,
+        .setBindGroup = {
+            groupIndex,
+            group,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            dynamicOffsetCount,
+            dynamicOffsets
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderSetIndexBuffer(WGPURenderBundleEncoder renderBundleEncoder, WGPUBuffer buffer, WGPUIndexFormat format, uint64_t offset, uint64_t size) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_set_index_buffer,
+        .setIndexBuffer = {
+            buffer,
+            format,
+            offset,
+            size
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderSetPipeline(WGPURenderBundleEncoder renderBundleEncoder, WGPURenderPipeline pipeline) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_set_render_pipeline,
+        .setRenderPipeline = {
+            pipeline
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderSetVertexBuffer(WGPURenderBundleEncoder renderBundleEncoder, uint32_t slot, WGPU_NULLABLE WGPUBuffer buffer, uint64_t offset, uint64_t size) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_set_vertex_buffer,
+        .setVertexBuffer = {
+            slot,
+            buffer,
+            offset
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderBundleEncoder->bufferedCommands, cmd);
+}
+
+void wgpuRenderBundleEncoderAddRef(WGPURenderBundleEncoder renderBundleEncoder) WGPU_FUNCTION_ATTRIBUTE{
+    ++renderBundleEncoder->refCount;
+
+}
+void wgpuRenderBundleEncoderRelease(WGPURenderBundleEncoder renderBundleEncoder) WGPU_FUNCTION_ATTRIBUTE{
+    if(--renderBundleEncoder->refCount == 0){
+        RL_FREE(renderBundleEncoder);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, const WGPURenderPassDescriptor* rpdesc){
     WGPURenderPassEncoder ret = RL_CALLOC(1, sizeof(WGPURenderPassEncoderImpl));
@@ -2390,6 +2530,7 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
 
     const VkRenderingInfo info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
         .colorAttachmentCount = beginInfo->colorAttachmentCount,
         .pColorAttachments = colorAttachments,
         .pDepthAttachment = beginInfo->depthAttachmentPresent ? &(const VkRenderingAttachmentInfo){
@@ -2585,6 +2726,12 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
             destination_->lastLayout = setRenderPipeline->pipeline->layout->layout;
         }
         break;
+        case rp_command_type_execute_renderbundles:{
+            const RenderPassCommandExecuteRenderbundles* executeRenderBundles = &command->executeRenderBundles;
+            for(uint32_t i = 0;i < executeRenderBundles->renderBundleCount;i++){
+                device->functions.vkCmdExecuteCommands(destination, 1, &(executeRenderBundles->renderBundles[i]->commandBuffer));
+            }
+        }break;
         case cp_command_type_set_compute_pipeline: {
             const ComputePassCommandSetPipeline* setComputePipeline = &command->setComputePipeline;
             memset((void*)destination_->computeBindGroups, 0, sizeof(destination_->computeBindGroups));
@@ -3913,7 +4060,7 @@ void ComputePassEncoder_PushCommand(WGPUComputePassEncoder encoder, const Render
 
 
 // Implementation of RenderpassEncoderDraw
-void wgpuRenderpassEncoderDraw(WGPURenderPassEncoder rpe, uint32_t vertices, uint32_t instances, uint32_t firstvertex, uint32_t firstinstance) {
+void wgpuRenderPassEncoderDraw(WGPURenderPassEncoder rpe, uint32_t vertices, uint32_t instances, uint32_t firstvertex, uint32_t firstinstance) {
     wgvk_assert(rpe != NULL, "RenderPassEncoderHandle is null");
     RenderPassCommandGeneric insert = {
         .type = rp_command_type_draw,
@@ -4329,6 +4476,21 @@ void wgpuRenderPassEncoderSetVertexBuffer(WGPURenderPassEncoder rpe, uint32_t bi
     
     ce_trackBuffer(rpe->cmdEncoder, buffer, (BufferUsageSnap){VK_PIPELINE_STAGE_VERTEX_INPUT_BIT    , VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT});
 }
+
+void wgpuRenderPassEncoderExecuteBundles(WGPURenderPassEncoder renderPassEncoder, size_t bundleCount, const WGPURenderBundle* bundles) WGPU_FUNCTION_ATTRIBUTE{
+    wgvk_assert(renderPassEncoder != NULL, "RenderPassEncoderHandle is null");
+    RenderPassCommandGeneric insert = {
+        .type = rp_command_type_execute_renderbundles,
+        .executeRenderBundles = {
+            .renderBundles = bundles,
+            .renderBundleCount = bundleCount
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
+    //TODO: trackRenderBundle?
+}
+
+
 void wgpuRenderPassEncoderDrawIndexedIndirect(WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) WGPU_FUNCTION_ATTRIBUTE{
     RenderPassCommandGeneric insert = {
         .type = rp_command_type_draw_indexed_indirect,
