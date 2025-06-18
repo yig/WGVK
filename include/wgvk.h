@@ -955,7 +955,6 @@ typedef struct WGPURenderBundleEncoderDescriptor {
 typedef struct WGPUCommandEncoderDescriptor{
     WGPUChainedStruct* nextInChain;
     WGPUStringView label;
-    WGPUBool recyclable;
 }WGPUCommandEncoderDescriptor;
 
 typedef struct Extent3D{

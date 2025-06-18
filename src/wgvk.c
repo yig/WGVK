@@ -97,13 +97,18 @@
 #undef Font
 #undef Matrix
 
-
+#ifndef STRVIEW
+    #define STRVIEW(X) (WGPUStringView){X, sizeof(X) - 1}
+#endif
 
 #include "spirv_reflect.c"
 #include <wgvk.h>
 #include <external/VmaUsage.h>
 #include <stdarg.h>
 
+static void DeviceCallback(WGPUDevice device, WGPUErrorType type, WGPUStringView msg){
+    device->uncapturedErrorCallbackInfo.callback(&device, type, msg, device->uncapturedErrorCallbackInfo.userdata1, device->uncapturedErrorCallbackInfo.userdata2);
+}
 
 // WGPU struct implementations
 
@@ -346,7 +351,7 @@ LayoutedRenderPass LoadRenderPassFromLayout(WGPUDevice device, RenderPassLayout 
     if(lrp)
         return *lrp;
 
-    TRACELOG(WGPU_LOG_INFO, "Loading new renderpass");
+    //TRACELOG(WGPU_LOG_INFO, "Loading new renderpass");
     
     VkAttachmentDescriptionVector allAttachments;
     VkAttachmentDescriptionVector_init(&allAttachments);
@@ -827,7 +832,6 @@ void wgpuCreateAdapter_impl(void* userdata_v){
     adapter->physicalDevice = pds[i];
     VkPhysicalDeviceProperties pdProperties = {0};
     vkGetPhysicalDeviceProperties(adapter->physicalDevice, &pdProperties);
-    TRACELOG(WGPU_LOG_INFO, "Using GPU %s", pdProperties.deviceName);
     vkGetPhysicalDeviceMemoryProperties(adapter->physicalDevice, &adapter->memProperties);
     uint32_t queueFamilyPropertyCount;
 
@@ -1037,6 +1041,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     // Retrieve and assign queues
     
     QueueIndices indices = adapter->queueIndices;
+    retDevice->uncapturedErrorCallbackInfo = descriptor->uncapturedErrorCallbackInfo;
     retDevice->functions.vkGetDeviceQueue(retDevice->device, indices.graphicsIndex, 0, &retQueue->graphicsQueue);
     //#ifndef FORCE_HEADLESS
     retDevice->functions.vkGetDeviceQueue(retDevice->device, indices.presentIndex, 0, &retQueue->presentQueue);
@@ -1057,9 +1062,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     };
     retDevice->functions.vkCreateCommandPool(retDevice->device, &pci, NULL, &retDevice->secondaryCommandPool);
     
-    WGPUCommandEncoderDescriptor cedesc = {
-        .recyclable = true,
-    };
+    WGPUCommandEncoderDescriptor cedesc = {0};
 
     FenceCache_Init(retDevice, &retDevice->fenceCache);
     for(uint32_t i = 0;i < framesInFlight;i++){
@@ -1123,7 +1126,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     aci.pVulkanFunctions = &vmaVulkanFunctions;
     VkResult allocatorCreateResult = vmaCreateAllocator(&aci, &retDevice->allocator);
     if(allocatorCreateResult != VK_SUCCESS){
-        TRACELOG(WGPU_LOG_FATAL, "Error creating the allocator: %d", (int)allocatorCreateResult);
+        retDevice->uncapturedErrorCallbackInfo.callback(&retDevice, WGPUErrorType_Internal, STRVIEW("Failed to create allocator"), retDevice->uncapturedErrorCallbackInfo.userdata1, retDevice->uncapturedErrorCallbackInfo.userdata2);
     }
     
     vmaCreatePool(retDevice->allocator, &vpci, &retDevice->aligned_hostVisiblePool);
@@ -1212,6 +1215,14 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor*
     VkResult vmabufferCreateResult = vmaCreateBuffer(device->allocator, &bufferDesc, &vallocInfo, &wgpuBuffer->buffer, &allocation, &allocationInfo);
 
     if(vmabufferCreateResult != VK_SUCCESS){
+        device->uncapturedErrorCallbackInfo.callback(
+            &device,
+            WGPUErrorType_OutOfMemory,
+            STRVIEW("Failed to create allocator"),
+            device->uncapturedErrorCallbackInfo.userdata1,
+            device->uncapturedErrorCallbackInfo.userdata2
+        );
+
         TRACELOG(WGPU_LOG_ERROR, "Could not allocate buffer: %s", vkErrorString(vmabufferCreateResult));
         RL_FREE(wgpuBuffer);
         return NULL;
@@ -1733,7 +1744,7 @@ WGPUBindGroup wgpuDeviceCreateBindGroup(WGPUDevice device, const WGPUBindGroupDe
     DescriptorSetAndPoolVector* dsap = BindGroupCacheMap_get(&fcache->bindGroupCache, bgdesc->layout);
 
     if(dsap == NULL || dsap->size == 0){ //Cache miss
-        TRACELOG(WGPU_LOG_INFO, "Allocating new VkDescriptorPool and -Set");
+        //TRACELOG(WGPU_LOG_INFO, "Allocating new VkDescriptorPool and -Set");
         VkDescriptorPoolCreateInfo dpci zeroinit;
         dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         dpci.maxSets = 1;
@@ -1934,11 +1945,6 @@ WGPUPipelineLayout wgpuDeviceCreatePipelineLayout(WGPUDevice device, const WGPUP
 
 WGPUCommandEncoder wgpuDeviceCreateCommandEncoder(WGPUDevice device, const WGPUCommandEncoderDescriptor* desc){
     WGPUCommandEncoder ret = RL_CALLOC(1, sizeof(WGPUCommandEncoderImpl));
-    //TRACELOG(WGPU_LOG_INFO, "Creating new commandencoder");
-    //VkCommandPoolCreateInfo pci{};
-    //pci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    //pci.flags = desc->recyclable ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    //ret->recyclable = desc->recyclable;
     ret->cacheIndex = device->submittedFrames % framesInFlight;
     PerframeCache* cache = &device->frameCaches[ret->cacheIndex];
     ret->device = device;
@@ -1953,10 +1959,8 @@ WGPUCommandEncoder wgpuDeviceCreateCommandEncoder(WGPUDevice device, const WGPUC
         };
 
         device->functions.vkAllocateCommandBuffers(device->device, &bai, &ret->buffer);
-        TRACELOG(WGPU_LOG_INFO, "Allocating new command buffer");
     }
     else{
-        //TRACELOG(WGPU_LOG_INFO, "Reusing");
         ret->buffer = device->frameCaches[ret->cacheIndex].commandBuffers.data[device->frameCaches[ret->cacheIndex].commandBuffers.size - 1];
         VkCommandBufferVector_pop_back(&device->frameCaches[ret->cacheIndex].commandBuffers);
         //vkResetCommandBuffer(ret->buffer, 0);
@@ -3099,7 +3103,7 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         }
         WGPUCommandBufferVector_free(&insert);
     }else{
-        TRACELOG(WGPU_LOG_FATAL, "vkQueueSubmit failed");
+        DeviceCallback(queue->device, WGPUErrorType_Internal, STRVIEW("vkQueueSubmit failed"));
     }
     wgpuCommandEncoderRelease(queue->presubmitCache);
     wgpuCommandBufferRelease(cachebuffer);
@@ -3115,12 +3119,7 @@ void wgpuSurfaceGetCapabilities(WGPUSurface wgpuSurface, WGPUAdapter adapter, WG
     VkSurfaceKHR surface = wgpuSurface->surface;
     VkSurfaceCapabilitiesKHR scap zeroinit;
     VkPhysicalDevice vk_physicalDevice = adapter->physicalDevice;
-    //printf("%p\n", vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
-    //float value;
-    //scanf("%f", &value);
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_physicalDevice, surface, &scap);
-    
-    // TRACELOG(WGPU_LOG_INFO, "scalphaflags: %d", scap.supportedCompositeAlpha);
     
     // Formats
     uint32_t formatCount = 0;
@@ -3213,19 +3212,23 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
     #define SWAPCHAIN_ICLAMP_TEMP(V, MINI, MAXI) ((V) < (MINI)) ? (MINI) : (((V) > (MAXI)) ? (MAXI) : (V))
     if(config->width < vkCapabilities.minImageExtent.width || config->width > vkCapabilities.maxImageExtent.width){
         correctedWidth = SWAPCHAIN_ICLAMP_TEMP(config->width, vkCapabilities.minImageExtent.width, vkCapabilities.maxImageExtent.width);
-        TRACELOG(WGPU_LOG_WARNING, "Invalid SurfaceConfiguration::width %u, adjusting to %u", config->width, correctedWidth);
+        char printbuf[1024] = {0};
+        size_t pblength = snprintf(printbuf, 1024, "Invalid SurfaceConfiguration::width %u, adjusting to %u", config->width, correctedWidth);
+        DeviceCallback(device, WGPUErrorType_Validation, (WGPUStringView){.data = printbuf, .length = pblength});
     }
     else{
         correctedWidth = config->width;
     }
     if(config->height < vkCapabilities.minImageExtent.height || config->height > vkCapabilities.maxImageExtent.height){
         correctedHeight = SWAPCHAIN_ICLAMP_TEMP(config->height, vkCapabilities.minImageExtent.height, vkCapabilities.maxImageExtent.height);
-        TRACELOG(WGPU_LOG_WARNING, "Invalid SurfaceConfiguration::height %u, adjusting to %u", config->height, correctedHeight);
+        char printbuf[1024] = {0};
+        size_t pblength = snprintf(printbuf, 1024, "Invalid SurfaceConfiguration::height %u, adjusting to %u", config->height, correctedHeight);
+        DeviceCallback(device, WGPUErrorType_Validation, (WGPUStringView){.data = printbuf, .length = pblength});
     }
     else{
         correctedHeight = config->height;
     }
-    //TRACELOG(WGPU_LOG_INFO, "Capabilities minImageCount: %d", (int)vkCapabilities.minImageCount);
+    #undef SWAPCHAIN_ICLAMP_TEMP
     
     createInfo.minImageCount = vkCapabilities.minImageCount + 1;
     createInfo.imageFormat = toVulkanPixelFormat(config->format);//swapchainImageFormat;
@@ -3260,9 +3263,9 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     VkResult scCreateResult = device->functions.vkCreateSwapchainKHR(device->device, &createInfo, NULL, &(surface->swapchain));
     if (scCreateResult != VK_SUCCESS) {
-        TRACELOG(WGPU_LOG_FATAL, "Failed to create swap chain!");
+        DeviceCallback(device, WGPUErrorType_Internal, STRVIEW("Failed to create swapchain"));
     } else {
-        TRACELOG(WGPU_LOG_INFO, "wgpuSurfaceConfigure(): Successfully created swap chain");
+        //TRACELOG(WGPU_LOG_INFO, "wgpuSurfaceConfigure(): Successfully created swap chain");
     }
 
     device->functions.vkGetSwapchainImagesKHR(device->device, surface->swapchain, &surface->imagecount, NULL);
@@ -3524,8 +3527,9 @@ void wgpuDeviceRelease(WGPUDevice device){
                     if(kvp->key != PHM_EMPTY_SLOT_KEY){
                         WGPUFence keyfence = kvp->key;
                         if(keyfence->state == WGPUFenceState_InUse){
-                            wgpuFenceWait(keyfence, UINT32_MAX);
+                            wgpuFenceWait(keyfence, ((uint64_t)1) << 28);
                         }
+                        keyfence->state = WGPUFenceState_Finished;
                         wgpuFenceRelease(keyfence);
                         WGPUCommandBufferVector* value = &kvp->value;
                         for(size_t cbi = 0;cbi < value->size;cbi++){
@@ -4516,7 +4520,7 @@ void wgpuDeviceTick(WGPUDevice device){
         }
     }
     else{
-        TRACELOG(WGPU_LOG_INFO, "No fences!");
+        //TRACELOG(WGPU_LOG_INFO, "No fences!");
     }
 
     PendingCommandBufferMap_for_each(pcm, resetFenceAndReleaseBuffers, device);    

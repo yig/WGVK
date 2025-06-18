@@ -2,11 +2,18 @@ cmake_minimum_required(VERSION 3.19)
 project(wgvk)
 include(FetchContent)
 option(WGVK_BUILD_EXAMPLES "Build some WGVK examples" ON)
+option(WGVK_USE_VMA "Use GPUOpen's VMA allocator (Requires C++)" OFF)
 
 # Lock in static for now
-add_library(wgvk STATIC src/wgvk.c)
-target_compile_definitions(wgvk PUBLIC RG_STATIC=1)
-
+set(WGVK_SRC_LIST "src/wgvk.c")
+if(WGVK_USE_VMA)
+    list(APPEND WGVK_SRC_LIST "src/vma_impl.cpp")
+endif()
+add_library(wgvk STATIC ${WGVK_SRC_LIST})
+target_compile_definitions(wgvk PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
+if(WGVK_USE_VMA)
+    target_compile_definitions(wgvk PUBLIC USE_VMA_ALLOCATOR=1)
+endif()
 
 target_include_directories(wgvk PUBLIC include)
 
