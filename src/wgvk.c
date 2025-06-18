@@ -2011,6 +2011,7 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
     for(uint32_t i = 0;i < descriptor->colorFormatCount;i++){
         colorAttachmentFormats[i] = toVulkanPixelFormat(descriptor->colorFormats[i]);
     }
+    ret->colorAttachmentCount = descriptor->colorFormatCount;
     ret->colorAttachmentFormats = colorAttachmentFormats;
     ret->depthStencilFormat = toVulkanPixelFormat(descriptor->depthStencilFormat);
     //if(VkCommandBufferVector_empty(&device->secondaryCommandBuffers)){
@@ -2740,6 +2741,7 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                         .pColorAttachmentFormats = bundle->colorAttachmentFormats,
                         .depthAttachmentFormat = bundle->depthStencilFormat,
                         .stencilAttachmentFormat = bundle->depthStencilFormat,
+                        .rasterizationSamples = 1 // todo
                     };
                 
                     VkCommandBufferInheritanceInfo inheritanceInfo = {
@@ -2756,11 +2758,23 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                     RenderPassCommandBegin dummyBeginInfo = {
                         .colorAttachmentCount = bundle->colorAttachmentCount
                     };
-                    device->functions.vkCmdSetViewport(executedBuffer, 0, 1, &ds.viewport); //TODO multiple colorattachments
-                    device->functions.vkCmdSetScissor(executedBuffer, 0, 1, &ds.scissorRect); //TODO multiple colorattachments
+                    
+                    for(uint32_t ai = 0;ai < bundle->colorAttachmentCount;ai++){
+                        device->functions.vkCmdSetViewport(executedBuffer, 0, 1, &ds.viewport   );
+                        if(ds.scissorRect.extent.width != UINT32_MAX){
+                            device->functions.vkCmdSetScissor (executedBuffer, 0, 1, &ds.scissorRect);
+                        }
+                        else{
+                            VkRect2D defaultRect = {
+                                .offset = {0, 0},
+                                .extent = {ds.viewport.width, ds.viewport.height}
+                            };
+                            device->functions.vkCmdSetScissor (executedBuffer, 0, 1, &defaultRect);
+                        }
+                    }
                     recordVkCommands(executedBuffer, device, &bundle->bufferedCommands, &dummyBeginInfo);
                     device->functions.vkEndCommandBuffer(executedBuffer);
-
+                    DynamicStateCommandBufferMap_put(&bundle->encodedCommandBuffers, ds, executedBuffer);
                 }
 
 

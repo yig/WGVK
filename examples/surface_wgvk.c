@@ -186,7 +186,7 @@ int main(){
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     WGPUSurfaceCapabilities caps = {0};
-    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Fifo;
+    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Mailbox;
     WGPUSurface surface = wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
