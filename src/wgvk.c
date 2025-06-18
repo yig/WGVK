@@ -2023,40 +2023,7 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
     //}
 
 
-    #if VULKAN_USE_DYNAMIC_RENDERING == 1
-    VkFormat vkFormats[MAX_COLOR_ATTACHMENTS] = {0};
-    for(uint32_t i = 0;i < descriptor->colorFormatCount;i++){
-        vkFormats[i] = toVulkanPixelFormat(descriptor->colorFormats[i]);
-    }
-    VkFormat depthFormat = toVulkanPixelFormat(descriptor->depthStencilFormat);
-
-    VkCommandBufferInheritanceRenderingInfo renderingInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
-        .colorAttachmentCount = descriptor->colorFormatCount,
-        .pColorAttachmentFormats = vkFormats,
-        .depthAttachmentFormat = depthFormat,
-        .stencilAttachmentFormat = depthFormat,
-        .rasterizationSamples = descriptor->sampleCount
-    };
-
-    VkCommandBufferInheritanceInfo inheritanceInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-        .pNext = &renderingInfo,
-    };
-
-    VkCommandBufferBeginInfo beginInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pInheritanceInfo = &inheritanceInfo
-    };
-    //device->functions.vkBeginCommandBuffer(ret->buffer, &beginInfo);
-    VkViewport viewPort = {
-        0,0,1920,1080,0,1
-    };
-    VkRect2D scissor = {
-        .offset = {0,0},
-        .extent = {1080,1080}
-    };
+    
     //device->functions.vkCmdSetViewport(ret->buffer, 0, 1, &viewPort);
     //device->functions.vkCmdSetScissor (ret->buffer, 0, 1, &scissor);
     
@@ -2065,9 +2032,7 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
     //vkCmdSetViewport(ret->buffer, 0, 1, &dummy_viewport);
     //vkCmdSetScissor (ret->buffer, 0, 1, &dummy_scissor);
     
-    #else
     wgvk_assert(false, "Dynamic rendering is required for render bundles");
-    #endif
     return ret;
 
 }
@@ -2639,6 +2604,7 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
         break;
         case rp_command_type_set_viewport:{
             const RenderPassCommandSetViewport* vp = &command->setViewport;
+            destination_->dynamicState.viewport = (VkViewport){vp->x, vp->y, vp->width, vp->height, vp->minDepth, vp->maxDepth};
             const VkViewport viewport[8] = {
                 {vp->x, vp->y, vp->width, vp->height, vp->minDepth, vp->maxDepth},
                 {vp->x, vp->y, vp->width, vp->height, vp->minDepth, vp->maxDepth},
@@ -2650,8 +2616,22 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                 {vp->x, vp->y, vp->width, vp->height, vp->minDepth, vp->maxDepth},
             };
             device->functions.vkCmdSetViewport(destination, 0, beginInfo->colorAttachmentCount, viewport);
-        }
-        break;
+        }break;
+        case rp_command_type_set_scissor_rect:{
+            const RenderPassCommandSetScissorRect* sr = &command->setScissorRect;
+            destination_->dynamicState.scissorRect = (VkRect2D){{sr->x, sr->y}, {sr->width, sr->height}};
+            const VkRect2D scissors[8] = {
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+                {{sr->x, sr->y}, {sr->width, sr->height}},
+            };
+            device->functions.vkCmdSetScissor(destination, 0, beginInfo->colorAttachmentCount, scissors);
+        }break;
 
         case rp_command_type_draw: {
             const RenderPassCommandDraw* draw = &command->draw;
@@ -2766,7 +2746,11 @@ void recordVkCommands(VkCommandBuffer destination, WGPUDevice device, const Rend
     CommandBufferAndSomeState cal = {
         .buffer = destination,
         .device = device,
-        .lastLayout = VK_NULL_HANDLE
+        .lastLayout = VK_NULL_HANDLE,
+        .dynamicState.scissorRect = {
+            .offset = {UINT32_MAX, UINT32_MAX},
+            .extent = {UINT32_MAX, UINT32_MAX},
+        }
     };
 
     for(size_t i = 0;i < commands->size;i++){
@@ -4499,6 +4483,7 @@ void wgpuRenderPassEncoderDrawIndexedIndirect(WGPURenderPassEncoder renderPassEn
             indirectOffset
         }
     };
+    RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
 }
 void wgpuRenderPassEncoderDrawIndirect           (WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) WGPU_FUNCTION_ATTRIBUTE{
     RenderPassCommandGeneric insert = {
@@ -4508,6 +4493,7 @@ void wgpuRenderPassEncoderDrawIndirect           (WGPURenderPassEncoder renderPa
             indirectOffset
         }
     };
+    RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
 }
 void wgpuRenderPassEncoderSetBlendConstant       (WGPURenderPassEncoder renderPassEncoder, WGPUColor const * color) WGPU_FUNCTION_ATTRIBUTE{
     RenderPassCommandGeneric insert = {
@@ -4516,6 +4502,7 @@ void wgpuRenderPassEncoderSetBlendConstant       (WGPURenderPassEncoder renderPa
             *color
         }
     };
+    RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
 }
 void wgpuRenderPassEncoderSetViewport            (WGPURenderPassEncoder renderPassEncoder, float x, float y, float width, float height, float minDepth, float maxDepth) WGPU_FUNCTION_ATTRIBUTE{
     RenderPassCommandGeneric insert = {
@@ -4524,6 +4511,16 @@ void wgpuRenderPassEncoderSetViewport            (WGPURenderPassEncoder renderPa
             x,y,width,height,minDepth,maxDepth
         }
     };
+    RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
+}
+void wgpuRenderPassEncoderSetScissorRect         (WGPURenderPassEncoder renderPassEncoder, uint32_t x, uint32_t y, uint32_t width, uint32_t height) WGPU_FUNCTION_ATTRIBUTE{
+    RenderPassCommandGeneric insert = {
+        .type = rp_command_type_set_viewport,
+        .setScissorRect = {
+            x,y,width,height
+        }
+    };
+    RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
 }
 
 void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder rpe, WGPUBuffer buffer, VkDeviceSize offset, WGPUIndexFormat indexType){

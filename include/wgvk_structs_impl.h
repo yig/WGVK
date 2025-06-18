@@ -916,6 +916,7 @@ typedef enum RCPassCommandType{
     rp_command_type_draw_indirect,
     rp_command_type_set_blend_constant,
     rp_command_type_set_viewport,
+    rp_command_type_set_scissor_rect,
     rp_command_type_set_vertex_buffer,
     rp_command_type_set_index_buffer,
     rp_command_type_set_bind_group,
@@ -987,6 +988,14 @@ typedef struct RenderPassCommandSetViewport{
     float minDepth;
     float maxDepth;
 }RenderPassCommandSetViewport;
+
+typedef struct RenderPassCommandSetScissorRect{
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+}RenderPassCommandSetScissorRect;
+
 typedef struct RenderPassCommandDrawIndexedIndirect{
     WGPUBuffer indirectBuffer;
     uint64_t indirectOffset;
@@ -1016,6 +1025,7 @@ typedef struct RenderPassCommandGeneric {
         RenderPassCommandDraw draw;
         RenderPassCommandDrawIndexed drawIndexed;
         RenderPassCommandSetViewport setViewport;
+        RenderPassCommandSetScissorRect setScissorRect;
         RenderPassCommandDrawIndexedIndirect drawIndexedIndirect;
         RenderPassCommandDrawIndirect drawIndirect;
         RenderPassCommandSetBlendConstant setBlendConstant;
@@ -1680,7 +1690,10 @@ typedef struct WGPUTextureViewImpl{
     uint32_t width, height, depthOrArrayLayers;
     uint32_t sampleCount;
 }WGPUTextureViewImpl;
-
+typedef struct DefaultDynamicState{
+    VkViewport viewport;
+    VkRect2D scissorRect;
+}DefaultDynamicState;
 typedef struct CommandBufferAndSomeState{
     VkCommandBuffer buffer;
     VkPipelineLayout lastLayout;
@@ -1689,7 +1702,9 @@ typedef struct CommandBufferAndSomeState{
     WGPUBuffer indexBuffer;
     WGPUBindGroup graphicsBindGroups[8];
     WGPUBindGroup computeBindGroups[8];
+    DefaultDynamicState dynamicState;
 }CommandBufferAndSomeState;
+
 void recordVkCommand(CommandBufferAndSomeState* destination, const RenderPassCommandGeneric* command, const RenderPassCommandBegin *beginInfo);
 void recordVkCommands(VkCommandBuffer destination, WGPUDevice device, const RenderPassCommandGenericVector* commands, const RenderPassCommandBegin *beginInfo);
 
