@@ -563,6 +563,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
 
     uint32_t availableExtensionCount = 0;
     VkResult enumResult = vkEnumerateInstanceExtensionProperties(NULL, &availableExtensionCount, NULL);
+    
     VkExtensionProperties* availableExtensions = NULL;
     const char** enabledExtensions = NULL; // Array of pointers to enabled names
     const uint32_t maxEnabledExtensions = 16;
@@ -628,8 +629,15 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     // --- End Extension Handling ---
 
     // 4. Specify Layers (if requested)
-    const char* const* requestedLayers = NULL;
-    uint32_t requestedLayerCount = 0;
+    VkLayerProperties availableLayers[64] = {0};
+    uint32_t availableLayerCount = 0;
+    VkResult layerEnumResult = vkEnumerateInstanceLayerProperties(&availableLayerCount, availableLayers);
+
+
+    char nullTerminatedRequestedLayers[64][64] = {0};
+    const char* nullTerminatedRequestedLayerPointers[64] = {0};
+    uint32_t requestedAvailableLayerCount = 0;
+
     
     WGPUInstanceLayerSelection* ils = NULL;
     int debugUtilsAvailable = 0; // Check if debug utils was actually enabled
@@ -644,8 +652,23 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     if (descriptor && descriptor->nextInChain) {
         if (((WGPUChainedStruct*)descriptor->nextInChain)->sType == WGPUSType_InstanceValidationLayerSelection) {
             ils = (WGPUInstanceLayerSelection*)descriptor->nextInChain;
-            requestedLayers = ils->instanceLayers;
-            requestedLayerCount = ils->instanceLayerCount;
+            for(uint32_t l = 0;l < ils->instanceLayerCount;l++){
+                const char* layerName = ils->instanceLayers[l];
+                int found = 0;
+                uint32_t al = 0;
+                for(al = 0;al < availableLayerCount;al++){
+                    if(memcmp(availableLayers[al].layerName, layerName, strlen(availableLayers[al].layerName)) == 0){
+                        found = 1;
+                        break;
+                    }
+                }
+                if(found){
+                    char* dest = nullTerminatedRequestedLayers[requestedAvailableLayerCount];
+                    memcpy(dest, layerName, strlen(availableLayers[al].layerName));
+                    nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = dest;
+                    ++requestedAvailableLayerCount;
+                }
+            }
         }
         // TODO: Handle other potential structs in nextInChain if necessary
     }
@@ -654,7 +677,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
     };
     // If layers are enabled, configure specific validation features, BUT only if debug utils is available
-    if (requestedLayerCount > 0) {
+    if (requestedAvailableLayerCount > 0) {
         if(debugUtilsAvailable) {
             validationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
             validationFeatures.enabledValidationFeatureCount = sizeof(enables) / sizeof(enables[0]);
@@ -680,8 +703,8 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         .pApplicationInfo = &appInfo,
         .enabledExtensionCount = enabledExtensionCount,
         .ppEnabledExtensionNames = enabledExtensions,
-        .enabledLayerCount   = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? requestedLayerCount : 0,
-        .ppEnabledLayerNames = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? requestedLayers : NULL,
+        .enabledLayerCount   = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? requestedAvailableLayerCount : 0,
+        .ppEnabledLayerNames = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? nullTerminatedRequestedLayerPointers : NULL,
     };
     VkResult result = vkCreateInstance(&ici, NULL, &ret->instance);
 
@@ -704,7 +727,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     volkLoadInstance(ret->instance);
 
     // 7. Create Debug Messenger (if layers requested AND debug utils was available/enabled)
-    if (requestedLayerCount > 0 && debugUtilsAvailable && vkCreateDebugUtilsMessengerEXT) {
+    if (requestedAvailableLayerCount > 0 && debugUtilsAvailable && vkCreateDebugUtilsMessengerEXT) {
         VkDebugUtilsMessengerCreateInfoEXT dbgCreateInfo zeroinit;
         dbgCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
         dbgCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
@@ -721,7 +744,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         } else {
             //fprintf(stdout, "Vulkan Debug Messenger created successfully.\n");
         }
-    } else if (requestedLayerCount > 0) {
+    } else if (requestedAvailableLayerCount > 0) {
         //fprintf(stdout, "Debug messenger creation skipped because VK_EXT_debug_utils extension was not available/enabled or layers were disabled.\n");
     }
 
