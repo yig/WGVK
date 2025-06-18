@@ -2007,14 +2007,19 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
 
     ret->device = device;
     ret->movedFrom = 0;
-    
+    VkFormat* colorAttachmentFormats = RL_CALLOC(descriptor->colorFormatCount, sizeof(VkFormat));
+    for(uint32_t i = 0;i < descriptor->colorFormatCount;i++){
+        colorAttachmentFormats[i] = toVulkanPixelFormat(descriptor->colorFormats[i]);
+    }
+    ret->colorAttachmentFormats = colorAttachmentFormats;
+    ret->depthStencilFormat = toVulkanPixelFormat(descriptor->depthStencilFormat);
     //if(VkCommandBufferVector_empty(&device->secondaryCommandBuffers)){
-    VkCommandBufferAllocateInfo bai = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = device->secondaryCommandPool,
-        .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-        .commandBufferCount = 1
-    };
+    //VkCommandBufferAllocateInfo bai = {
+    //    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+    //    .commandPool = device->secondaryCommandPool,
+    //    .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+    //    .commandBufferCount = 1
+    //};
     //device->functions.vkAllocateCommandBuffers(device->device, &bai, &ret->buffer);
     //}
     //else{
@@ -2031,16 +2036,19 @@ WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, c
     //VkRect2D dummy_scissor = { {0, 0}, {1, 1} };
     //vkCmdSetViewport(ret->buffer, 0, 1, &dummy_viewport);
     //vkCmdSetScissor (ret->buffer, 0, 1, &dummy_scissor);
-    
-    wgvk_assert(false, "Dynamic rendering is required for render bundles");
     return ret;
 
 }
 WGPURenderBundle wgpuRenderBundleEncoderFinish(WGPURenderBundleEncoder renderBundleEncoder, WGPU_NULLABLE WGPURenderBundleDescriptor const * descriptor){
     WGPURenderBundle ret = RL_CALLOC(1, sizeof(WGPURenderBundleImpl));
+    RenderPassCommandGenericVector_move(&ret->bufferedCommands, &renderBundleEncoder->bufferedCommands);
     renderBundleEncoder->movedFrom = 1;
     ret->device = renderBundleEncoder->device;
-    ret->device->functions.vkEndCommandBuffer(ret->commandBuffer);
+    ret->colorAttachmentFormats = renderBundleEncoder->colorAttachmentFormats;
+    renderBundleEncoder->colorAttachmentFormats = NULL;
+    ret->colorAttachmentCount = renderBundleEncoder->colorAttachmentCount;
+    ret->depthStencilFormat = renderBundleEncoder->depthStencilFormat;
+    //ret->device->functions.vkEndCommandBuffer(ret->commandBuffer);
     ret->refCount = 1;
     return ret;
 }
@@ -2308,6 +2316,7 @@ WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, 
         wgvk_assert(rpdesc->depthStencilAttachment->view, "depthStencilAttachment.view is null");
         ce_trackTextureView(enc, rpdesc->depthStencilAttachment->view, iur_depth);
     }
+    wgpuRenderPassEncoderSetViewport(ret, 0, 0, rpdesc->colorAttachments[0].view->width, rpdesc->colorAttachments[0].view->height, 0, 1);
     return ret;
 }
 
@@ -2709,7 +2718,53 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
         case rp_command_type_execute_renderbundles:{
             const RenderPassCommandExecuteRenderbundles* executeRenderBundles = &command->executeRenderBundles;
             for(uint32_t i = 0;i < executeRenderBundles->renderBundleCount;i++){
-                device->functions.vkCmdExecuteCommands(destination, 1, &(executeRenderBundles->renderBundles[i]->commandBuffer));
+                WGPURenderBundle bundle = executeRenderBundles->renderBundles[i];
+                DefaultDynamicState ds = destination_->dynamicState;
+                VkCommandBuffer* maybeBuffer = DynamicStateCommandBufferMap_get(&bundle->encodedCommandBuffers, ds);
+                VkCommandBuffer executedBuffer;
+                if(maybeBuffer){
+                    executedBuffer = *maybeBuffer;
+                }
+                else{
+                    VkCommandBufferAllocateInfo bai = {
+                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                        .commandPool = device->secondaryCommandPool,
+                        .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+                        .commandBufferCount = 1
+                    };
+                    device->functions.vkAllocateCommandBuffers(device->device, &bai, &executedBuffer);
+                    
+                    VkCommandBufferInheritanceRenderingInfo renderingInfo = {
+                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
+                        .colorAttachmentCount = bundle->colorAttachmentCount,
+                        .pColorAttachmentFormats = bundle->colorAttachmentFormats,
+                        .depthAttachmentFormat = bundle->depthStencilFormat,
+                        .stencilAttachmentFormat = bundle->depthStencilFormat,
+                    };
+                
+                    VkCommandBufferInheritanceInfo inheritanceInfo = {
+                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+                        .pNext = &renderingInfo,
+                    };
+                
+                    VkCommandBufferBeginInfo beginInfo = {
+                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+                        .pInheritanceInfo = &inheritanceInfo
+                    };
+                    device->functions.vkBeginCommandBuffer(executedBuffer, &beginInfo);
+                    RenderPassCommandBegin dummyBeginInfo = {
+                        .colorAttachmentCount = bundle->colorAttachmentCount
+                    };
+                    device->functions.vkCmdSetViewport(executedBuffer, 0, 1, &ds.viewport); //TODO multiple colorattachments
+                    device->functions.vkCmdSetScissor(executedBuffer, 0, 1, &ds.scissorRect); //TODO multiple colorattachments
+                    recordVkCommands(executedBuffer, device, &bundle->bufferedCommands, &dummyBeginInfo);
+                    device->functions.vkEndCommandBuffer(executedBuffer);
+
+                }
+
+
+                device->functions.vkCmdExecuteCommands(destination, 1, &executedBuffer);
             }
         }break;
         case cp_command_type_set_compute_pipeline: {

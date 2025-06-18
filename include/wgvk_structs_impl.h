@@ -1734,11 +1734,44 @@ typedef struct WGPUComputePassEncoderImpl{
     WGPUBindGroup bindGroups[8];
 }WGPUComputePassEncoderImpl;
 
+static inline size_t hashDynamicState(DefaultDynamicState dst){
+    float accum = dst.viewport.x;
+    accum = accum * 1.71421351f + dst.viewport.y;
+    accum = accum * 1.71421351f + dst.viewport.width;
+    accum = accum * 1.71421351f + dst.viewport.height;
+    accum = accum * 1.71421351f + dst.viewport.minDepth;
+    accum = accum * 1.71421351f + dst.viewport.maxDepth;
+    size_t ret = dst.scissorRect.extent.width;
+    ret = (ret * PHM_HASH_MULTIPLIER) ^ dst.scissorRect.extent.height;
+    ret = (ret * PHM_HASH_MULTIPLIER) ^ dst.scissorRect.offset.x;
+    ret = (ret * PHM_HASH_MULTIPLIER) ^ dst.scissorRect.offset.y;
+    return ret ^ ((size_t)accum);
+}
+static inline size_t cmpDynamicState(DefaultDynamicState a, DefaultDynamicState b){
+    return 
+    a.viewport.x == b.viewport.x &&
+    a.viewport.y == b.viewport.y &&
+    a.viewport.width == b.viewport.width &&
+    a.viewport.height == b.viewport.height &&
+    a.viewport.minDepth == b.viewport.minDepth &&
+    a.viewport.maxDepth == b.viewport.maxDepth &&
+    a.scissorRect.offset.x == b.scissorRect.offset.x &&
+    a.scissorRect.offset.y == b.scissorRect.offset.y &&
+    a.scissorRect.extent.width == b.scissorRect.extent.width &&
+    a.scissorRect.extent.height == b.scissorRect.extent.height;
+}
+DEFINE_GENERIC_HASH_MAP(static inline, DynamicStateCommandBufferMap, DefaultDynamicState, VkCommandBuffer, hashDynamicState, cmpDynamicState, (DefaultDynamicState){0})
 
 typedef struct WGPURenderBundleImpl{
-    VkCommandBuffer commandBuffer;
+    RenderPassCommandGenericVector bufferedCommands;
+    DynamicStateCommandBufferMap encodedCommandBuffers;
     WGPUDevice device;
     uint32_t refCount;
+    
+    VkFormat* colorAttachmentFormats;
+    uint32_t colorAttachmentCount;
+    VkFormat depthFormat;
+    VkFormat depthStencilFormat;
 }WGPURenderBundleImpl;
 
 typedef struct WGPURenderBundleEncoderImpl{
@@ -1748,6 +1781,10 @@ typedef struct WGPURenderBundleEncoderImpl{
     uint32_t cacheIndex;
     WGPUBool movedFrom;
     WGPUPipelineLayout lastLayout;
+
+    VkFormat* colorAttachmentFormats;
+    uint32_t colorAttachmentCount;
+    VkFormat depthStencilFormat;
 }WGPURenderBundleEncoderImpl;
 
 void RenderPassEncoder_PushCommand(WGPURenderPassEncoder, const RenderPassCommandGeneric* cmd);
