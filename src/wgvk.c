@@ -4735,6 +4735,115 @@ RGAPI void ru_trackSampler         (ResourceUsage* resourceUsage, WGPUSampler sa
         ++sampler->refCount;
     }
 }
+typedef enum barrierType{
+    bt_no_barrier = 0,
+    bt_buffer_barrier = 1,
+    bt_memory_barrier = 2,
+    bt_image_barrier = 3,
+    bt_force32 = 0x7fffffff
+} barrierType;
+typedef struct OptionalBarrier{
+    barrierType type;
+    VkPipelineStageFlags srcStage;
+    VkPipelineStageFlags dstStage;
+    union{
+        VkBufferMemoryBarrier bufferBarrier;
+        VkMemoryBarrier memoryBarrier;
+        VkImageMemoryBarrier imageBarrier;
+    };
+}OptionalBarrier;
+
+static OptionalBarrier ru_trackTextureAndEmit(ResourceUsage* resourceUsage, WGPUTexture texture, ImageUsageSnap usage){
+    ImageUsageRecord* alreadyThere = ImageUsageRecordMap_get(&resourceUsage->referencedTextures, texture);
+    if(alreadyThere){
+        VkImageMemoryBarrier barr = {
+            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            NULL,
+            alreadyThere->lastAccess,
+            usage.access,
+            alreadyThere->lastLayout,
+            usage.layout,
+            texture->device->adapter->queueIndices.graphicsIndex,
+            texture->device->adapter->queueIndices.graphicsIndex,
+            texture->image,
+            usage.subresource
+        };
+        OptionalBarrier ret = {
+            .srcStage = alreadyThere->lastStage,
+            .dstStage = usage.stage,
+            .type = bt_image_barrier,
+            .imageBarrier = barr
+        };
+        return ret;
+    }
+    else{
+        ImageUsageRecord record = {
+            .initialAccess = usage.access,
+            .initialStage = usage.stage,
+            .initialLayout = usage.layout,
+            .lastLayout = usage.layout,
+            .lastStage = usage.stage,
+            .lastAccess = usage.access,
+            .initiallyAccessedSubresource = usage.subresource,
+            .lastAccessedSubresource = usage.subresource
+        };
+        int newEntry = ImageUsageRecordMap_put(&resourceUsage->referencedTextures, texture, record);
+        wgvk_assert(newEntry != 0, "_get failed, but _put did not return 1");
+        if(newEntry)
+            ++texture->refCount;
+
+        return (OptionalBarrier){
+            .type = bt_no_barrier
+        };
+    }
+}
+
+static OptionalBarrier ru_trackTextureViewAndEmit(ResourceUsage* resourceUsage, WGPUTextureView view, ImageUsageSnap usage){
+    ru_trackTextureView(resourceUsage, view);
+    
+    ImageUsageRecord* alreadyThere = ImageUsageRecordMap_get(&resourceUsage->referencedTextures, view->texture);
+    if(alreadyThere){
+        VkImageMemoryBarrier barr = {
+            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            NULL,
+            alreadyThere->lastAccess,
+            usage.access,
+            alreadyThere->lastLayout,
+            usage.layout, 
+            view->texture->device->adapter->queueIndices.graphicsIndex,
+            view->texture->device->adapter->queueIndices.graphicsIndex,
+            view->texture->image,
+            view->subresourceRange
+        };
+        OptionalBarrier ret = {
+            .srcStage = alreadyThere->lastStage,
+            .dstStage = usage.stage,
+            .type = bt_image_barrier,
+            .imageBarrier = barr
+        };
+        return ret;
+    }
+    else{
+        ImageUsageRecord record = {
+            .initialAccess = usage.access,
+            .initialStage = usage.stage,
+            .initialLayout = usage.layout,
+            .lastLayout = usage.layout,
+            .lastStage = usage.stage,
+            .lastAccess = usage.access,
+            .initiallyAccessedSubresource = usage.subresource,
+            .lastAccessedSubresource = usage.subresource
+        };
+        int newEntry = ImageUsageRecordMap_put(&resourceUsage->referencedTextures, texture, record);
+        wgvk_assert(newEntry != 0, "_get failed, but _put did not return 1");
+        if(newEntry)
+            ++view->texture->refCount;
+
+        return (OptionalBarrier){
+            .type = bt_no_barrier
+        };
+    }
+}
 
 RGAPI void ce_trackTexture(WGPUCommandEncoder encoder, WGPUTexture texture, ImageUsageSnap usage){
     ImageUsageRecord* alreadyThere = ImageUsageRecordMap_get(&encoder->resourceUsage.referencedTextures, texture);
@@ -4765,13 +4874,17 @@ RGAPI void ce_trackTexture(WGPUCommandEncoder encoder, WGPUTexture texture, Imag
         alreadyThere->lastLayout = usage.layout;
     }
     else{
-        int newEntry = ImageUsageRecordMap_put(&encoder->resourceUsage.referencedTextures, texture, CLITERAL(ImageUsageRecord){
-            usage.layout,
-            usage.layout,
-            usage.stage,
-            usage.access,
-            usage.subresource
-        });
+        ImageUsageRecord record = {
+            .initialAccess = usage.access,
+            .initialStage = usage.stage,
+            .initialLayout = usage.layout,
+            .lastLayout = usage.layout,
+            .lastStage = usage.stage,
+            .lastAccess = usage.access,
+            .initiallyAccessedSubresource = usage.subresource,
+            .lastAccessedSubresource = usage.subresource
+        };
+        int newEntry = ImageUsageRecordMap_put(&encoder->resourceUsage.referencedTextures, texture, record);
         wgvk_assert(newEntry != 0, "_get failed, but _put did not return 1");
         if(newEntry)
             ++texture->refCount;
@@ -4797,6 +4910,7 @@ RGAPI void ce_trackTextureView(WGPUCommandEncoder enc, WGPUTextureView view, Ima
             view->texture->image,
             view->subresourceRange
         };
+
         enc->device->functions.vkCmdPipelineBarrier(
             enc->buffer,
             alreadyThere->lastStage, 
@@ -4811,13 +4925,17 @@ RGAPI void ce_trackTextureView(WGPUCommandEncoder enc, WGPUTextureView view, Ima
         alreadyThere->lastLayout = usage.layout;
     }
     else{
-        int newEntry = ImageUsageRecordMap_put(&enc->resourceUsage.referencedTextures, view->texture, CLITERAL(ImageUsageRecord){
-            usage.layout,
-            usage.layout,
-            usage.stage,
-            usage.access,
-            view->subresourceRange
-        });
+        ImageUsageRecord record = {
+            .initialAccess = usage.access,
+            .initialStage = usage.stage,
+            .initialLayout = usage.layout,
+            .lastLayout = usage.layout,
+            .lastStage = usage.stage,
+            .lastAccess = usage.access,
+            .initiallyAccessedSubresource = view->subresourceRange,
+            .lastAccessedSubresource = view->subresourceRange
+        };
+        int newEntry = ImageUsageRecordMap_put(&enc->resourceUsage.referencedTextures, view->texture, record);
         wgvk_assert(newEntry != 0, "_get failed, but _put did not return 1");
         if(newEntry)
             ++view->texture->refCount;
@@ -4853,9 +4971,11 @@ RGAPI void ce_trackBuffer(WGPUCommandEncoder encoder, WGPUBuffer buffer, BufferU
     }
     else{
         BufferUsageRecord record = {
-            usage.stage,
-            usage.access,
-            isWritingAccess(usage.access)
+            .initialStage = usage.stage,
+            .initialAccess = usage.access,
+            .lastStage = usage.stage,
+            .lastAccess = usage.access,
+            .everWrittenTo = isWritingAccess(usage.access)
         };
         ru_trackBuffer(&encoder->resourceUsage, buffer, record);
     }

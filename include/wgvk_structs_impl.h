@@ -883,10 +883,13 @@ struct WgvkAllocator {
 };
 
 typedef struct ImageUsageRecord{
-    VkImageLayout initialLayout;
-    VkImageLayout lastLayout;
+    VkPipelineStageFlags initialStage;
+    VkAccessFlags initialAccess;
     VkPipelineStageFlags lastStage;
     VkAccessFlags lastAccess;
+    VkImageLayout initialLayout;
+    VkImageLayout lastLayout;
+    VkImageSubresourceRange initiallyAccessedSubresource;
     VkImageSubresourceRange lastAccessedSubresource;
 }ImageUsageRecord;
 
@@ -898,6 +901,8 @@ typedef struct ImageUsageSnap{
 }ImageUsageSnap;
 
 typedef struct BufferUsageRecord{
+    VkPipelineStageFlags initialStage;
+    VkAccessFlags initialAccess;
     VkPipelineStageFlags lastStage;
     VkAccessFlags lastAccess;
     VkBool32 everWrittenTo;
