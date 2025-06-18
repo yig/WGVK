@@ -49,6 +49,8 @@ if(WGVK_BUILD_EXAMPLES)
     FetchContent_MakeAvailable(glfw)
 
     add_executable(surface_wgvk "examples/surface_wgvk.c")
+    add_executable(basic_compute "examples/basic_compute.c")
     
     target_link_libraries(surface_wgvk PUBLIC wgvk glfw)
+    target_link_libraries(basic_compute PUBLIC wgvk glfw)
 endif()

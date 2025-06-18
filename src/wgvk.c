@@ -3515,16 +3515,19 @@ void wgpuDeviceRelease(WGPUDevice device){
                 BindGroupCacheMap_free(&cache->bindGroupCache);
                 device->functions.vkDestroyCommandPool(device->device, cache->commandPool, NULL);
             }
+            FenceCache_Destroy(&device->fenceCache);
             #if USE_VMA_ALLOCATOR == 1
             vmaDestroyPool(device->allocator, device->aligned_hostVisiblePool);
             vmaDestroyAllocator(device->allocator);
             #endif
+            wgvkAllocator_destroy(&device->builtinAllocator);
         }
-        
+        device->functions.vkDestroyCommandPool(device->device, device->secondaryCommandPool, NULL);
         
         wgpuQueueRelease(device->queue);
         wgpuAdapterRelease(device->adapter);
         device->functions.vkDestroyDevice(device->device, NULL);
+        
         // Still a lot to do
         RL_FREE(device->queue);
         RL_FREE(device);
