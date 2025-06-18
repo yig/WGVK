@@ -40,7 +40,7 @@
 
 #define rg_countof(X) (sizeof(X) / sizeof((X)[0]))
 #ifndef RGAPI
-    #if defined(RG_STATIC) && RG_STATIC != 0
+    #if !defined(RG_SHARED) || RG_SHARED == 0
         #ifdef __cplusplus
         #define RGAPI extern "C"
         #else
