@@ -344,7 +344,7 @@ int main(){
             .colorAttachmentCount = 1,
             .colorAttachments = &colorAttachment,
         });
-    
+        wgpuRenderPassEncoderSetScissorRect(rpenc, 0, 0, (frameCount / 8) % 1000, height);
         //wgpuRenderPassEncoderSetPipeline(rpenc, rp);
         //wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0);
         //wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);

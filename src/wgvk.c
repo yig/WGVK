@@ -1298,9 +1298,34 @@ void wgpuBufferUnmap(WGPUBuffer buffer){
         rg_unreachable();
     }
 }
-
+typedef struct userdataformapbufferasync{
+    WGPUBuffer buffer;
+    WGPUMapMode mode;
+    size_t offset;
+    size_t size;
+    WGPUBufferMapCallbackInfo info;
+}userdataformapbufferasync;
+void wgpuBufferMapSync(void* data){
+    userdataformapbufferasync* info = (userdataformapbufferasync*)data;
+    void* mapdata = NULL;
+    wgpuBufferMap(info->buffer, info->mode, info->offset, info->size, &mapdata);
+    info->info.callback(WGPUMapAsyncStatus_Success, (WGPUStringView){"", 0}, info->info.userdata1, info->info.userdata2);
+}
 WGPUFuture wgpuBufferMapAsync(WGPUBuffer buffer, WGPUMapMode mode, size_t offset, size_t size, WGPUBufferMapCallbackInfo callbackInfo){
-    return (WGPUFuture){0};
+    userdataformapbufferasync* info = (userdataformapbufferasync*)RL_CALLOC(1, sizeof(userdataformapbufferasync));
+    info->buffer = buffer;
+    info->mode = mode;
+    info->offset = offset;
+    info->size = size;
+    info->info = callbackInfo;
+    WGPUFutureImpl ret = {
+        .userdataForFunction = info,
+        .functionCalledOnWaitAny = wgpuBufferMapSync,
+        .freeUserData = RL_FREE
+    };
+    uint64_t id = buffer->device->adapter->instance->currentFutureId++; //atomic?
+    FutureIDMap_put(&buffer->device->adapter->instance->g_futureIDMap, id, ret);
+    return (WGPUFuture){ id };
 }
 
 size_t wgpuBufferGetSize(WGPUBuffer buffer){
@@ -4610,9 +4635,9 @@ void wgpuRenderPassEncoderSetViewport            (WGPURenderPassEncoder renderPa
 }
 void wgpuRenderPassEncoderSetScissorRect         (WGPURenderPassEncoder renderPassEncoder, uint32_t x, uint32_t y, uint32_t width, uint32_t height) WGPU_FUNCTION_ATTRIBUTE{
     RenderPassCommandGeneric insert = {
-        .type = rp_command_type_set_viewport,
+        .type = rp_command_type_set_scissor_rect,
         .setScissorRect = {
-            x,y,width,height
+            x, y, width, height
         }
     };
     RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
