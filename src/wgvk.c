@@ -107,7 +107,9 @@
 #include <stdarg.h>
 
 static void DeviceCallback(WGPUDevice device, WGPUErrorType type, WGPUStringView msg){
-    device->uncapturedErrorCallbackInfo.callback(&device, type, msg, device->uncapturedErrorCallbackInfo.userdata1, device->uncapturedErrorCallbackInfo.userdata2);
+    if(device->uncapturedErrorCallbackInfo.callback){
+        device->uncapturedErrorCallbackInfo.callback(&device, type, msg, device->uncapturedErrorCallbackInfo.userdata1, device->uncapturedErrorCallbackInfo.userdata2);
+    }
 }
 
 // WGPU struct implementations
@@ -1126,7 +1128,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     aci.pVulkanFunctions = &vmaVulkanFunctions;
     VkResult allocatorCreateResult = vmaCreateAllocator(&aci, &retDevice->allocator);
     if(allocatorCreateResult != VK_SUCCESS){
-        retDevice->uncapturedErrorCallbackInfo.callback(&retDevice, WGPUErrorType_Internal, STRVIEW("Failed to create allocator"), retDevice->uncapturedErrorCallbackInfo.userdata1, retDevice->uncapturedErrorCallbackInfo.userdata2);
+        DeviceCallback(retDevice, WGPUErrorType_Internal, STRVIEW("Failed to create allocator"));
     }
     
     vmaCreatePool(retDevice->allocator, &vpci, &retDevice->aligned_hostVisiblePool);
@@ -1215,14 +1217,7 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor*
     VkResult vmabufferCreateResult = vmaCreateBuffer(device->allocator, &bufferDesc, &vallocInfo, &wgpuBuffer->buffer, &allocation, &allocationInfo);
 
     if(vmabufferCreateResult != VK_SUCCESS){
-        device->uncapturedErrorCallbackInfo.callback(
-            &device,
-            WGPUErrorType_OutOfMemory,
-            STRVIEW("Failed to create allocator"),
-            device->uncapturedErrorCallbackInfo.userdata1,
-            device->uncapturedErrorCallbackInfo.userdata2
-        );
-
+        DeviceCallback(device, WGPUErrorType_OutOfMemory, STRVIEW("Failed to create allocator"));
         TRACELOG(WGPU_LOG_ERROR, "Could not allocate buffer: %s", vkErrorString(vmabufferCreateResult));
         RL_FREE(wgpuBuffer);
         return NULL;
@@ -1821,7 +1816,7 @@ WGPUBindGroupLayout wgpuDeviceCreateBindGroupLayout(WGPUDevice device, const WGP
         bindings.data[i].descriptorType = vkdtype;
 
         if(entries[i].visibility == 0){
-            TRACELOG(WGPU_LOG_WARNING, "Empty visibility detected, falling back to Vertex | Fragment | Compute mask");
+            //TRACELOG(WGPU_LOG_WARNING, "Empty visibility detected, falling back to Vertex | Fragment | Compute mask");
             bindings.data[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
         }
 
@@ -1910,9 +1905,9 @@ WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShade
         default: {
             RL_FREE(ret);
             wgvk_assert(false, "Invalid shader source type");
+            return NULL;
         }
     }
-
 }
 
 
