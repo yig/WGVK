@@ -4831,10 +4831,10 @@ static OptionalBarrier ru_trackTextureViewAndEmit(ResourceUsage* resourceUsage, 
             .lastLayout = usage.layout,
             .lastStage = usage.stage,
             .lastAccess = usage.access,
-            .initiallyAccessedSubresource = usage.subresource,
-            .lastAccessedSubresource = usage.subresource
+            .initiallyAccessedSubresource = view->subresourceRange,
+            .lastAccessedSubresource = view->subresourceRange
         };
-        int newEntry = ImageUsageRecordMap_put(&resourceUsage->referencedTextures, texture, record);
+        int newEntry = ImageUsageRecordMap_put(&resourceUsage->referencedTextures, view->texture, record);
         wgvk_assert(newEntry != 0, "_get failed, but _put did not return 1");
         if(newEntry)
             ++view->texture->refCount;
