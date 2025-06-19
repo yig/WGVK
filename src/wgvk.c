@@ -623,7 +623,6 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
             instanceCreateFlags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
         } else if (!portabilityEnumerationAvailable) {
             fprintf(stderr, "Error: An enabled surface extension requires '%s', but it is not available! Instance creation may fail.\n", VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-            // Proceed anyway, vkCreateInstance will likely fail.
         } else {
             // fprintf(stderr, "Warning: Portability enumeration needed but exceeded max enabled count (%u).\n", maxEnabledExtensions);
         }
@@ -638,6 +637,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     // 4. Specify Layers (if requested)
     VkLayerProperties availableLayers[64] = {0};
     uint32_t availableLayerCount = 0;
+    vkEnumerateInstanceLayerProperties(&availableLayerCount, NULL);
     VkResult layerEnumResult = vkEnumerateInstanceLayerProperties(&availableLayerCount, availableLayers);
 
 
@@ -713,6 +713,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         .enabledLayerCount   = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? requestedAvailableLayerCount : 0,
         .ppEnabledLayerNames = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? nullTerminatedRequestedLayerPointers : NULL,
     };
+    
     VkResult result = vkCreateInstance(&ici, NULL, &ret->instance);
 
 
@@ -4909,9 +4910,8 @@ static void encoderOptionalBarrierVk(VkCommandBuffer buffer, PFN_vkCmdPipelineBa
             memoryBarrier = &barrier.memoryBarrier;
             ++memoryBarriers;
         }break;
-
-
-        default:break;
+        
+        default: return;
     }
     barrier_fn(
         buffer,
