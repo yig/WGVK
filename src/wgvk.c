@@ -4888,9 +4888,8 @@ static OptionalBarrier ru_trackBufferAndEmit(ResourceUsage* resourceUsage, WGPUB
         return (OptionalBarrier){bt_no_barrier};
     }
 }
-static void encoderOptionalBarrier(WGPUCommandEncoder encoder, OptionalBarrier barrier){
-    WGPUDevice device = encoder->device;
-    struct VolkDeviceTable* functions = &encoder->device->functions;
+
+static void encoderOptionalBarrierVk(VkCommandBuffer buffer, PFN_vkCmdPipelineBarrier barrier_fn, OptionalBarrier barrier){
     uint32_t bufferBarriers = 0;
     uint32_t memoryBarriers = 0;
     uint32_t imageBarriers  = 0;
@@ -4914,8 +4913,8 @@ static void encoderOptionalBarrier(WGPUCommandEncoder encoder, OptionalBarrier b
 
         default:break;
     }
-    functions->vkCmdPipelineBarrier(
-        encoder->buffer,
+    barrier_fn(
+        buffer,
         barrier.srcStage,
         barrier.dstStage,
         0,
@@ -4923,6 +4922,9 @@ static void encoderOptionalBarrier(WGPUCommandEncoder encoder, OptionalBarrier b
         bufferBarriers, bufferBarrier,
         imageBarriers,  imageBarrier
     );
+}
+static void encoderOptionalBarrier(WGPUCommandEncoder encoder, OptionalBarrier barrier){
+    encoderOptionalBarrierVk(encoder->buffer, encoder->device->functions.vkCmdPipelineBarrier, barrier);
 }
 static void ru_trackAndEncodeTexture(WGPUCommandEncoder encoder, ResourceUsage* resourceUsage, WGPUTexture texture, ImageUsageSnap usage){
     OptionalBarrier barrier = ru_trackTextureAndEmit(resourceUsage, texture, usage);
@@ -4939,141 +4941,34 @@ static void ru_trackAndEncodeBuffer(WGPUCommandEncoder encoder, ResourceUsage* r
     encoderOptionalBarrier(encoder, barrier);
 }
 
-RGAPI void ce_trackTexture(WGPUCommandEncoder encoder, WGPUTexture texture, ImageUsageSnap usage){
-    ImageUsageRecord* alreadyThere = ImageUsageRecordMap_get(&encoder->resourceUsage.referencedTextures, texture);
-    if(alreadyThere){
-        VkImageMemoryBarrier imageBarrier = {
-            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            NULL,
-            alreadyThere->lastAccess,
-            usage.access,
-            alreadyThere->lastLayout,
-            usage.layout,
-            encoder->device->adapter->queueIndices.graphicsIndex,
-            encoder->device->adapter->queueIndices.graphicsIndex,
-            texture->image,
-            usage.subresource
-        };
-        encoder->device->functions.vkCmdPipelineBarrier(
-            encoder->buffer, 
-            alreadyThere->lastStage, 
-            usage.stage,
-            0, 
-            0, NULL, 
-            0, NULL, 
-            1, &imageBarrier
-        );
-        alreadyThere->lastStage  = usage.stage;
-        alreadyThere->lastAccess = usage.access;
-        alreadyThere->lastLayout = usage.layout;
-    }
-    else{
-        ImageUsageRecord record = {
-            .initialAccess = usage.access,
-            .initialStage = usage.stage,
-            .initialLayout = usage.layout,
-            .lastLayout = usage.layout,
-            .lastStage = usage.stage,
-            .lastAccess = usage.access,
-            .initiallyAccessedSubresource = usage.subresource,
-            .lastAccessedSubresource = usage.subresource
-        };
-        int newEntry = ImageUsageRecordMap_put(&encoder->resourceUsage.referencedTextures, texture, record);
-        wgvk_assert(newEntry != 0, "_get failed, but _put did not return 1");
-        if(newEntry)
-            ++texture->refCount;
-    }
+static void ru_trackAndEncodeTextureVk(VkCommandBuffer buffer, ResourceUsage* resourceUsage, WGPUTexture texture, ImageUsageSnap usage){
+    OptionalBarrier barrier = ru_trackTextureAndEmit(resourceUsage, texture, usage);
+    encoderOptionalBarrierVk(buffer, texture->device->functions.vkCmdPipelineBarrier, barrier);
 }
 
-RGAPI void ce_trackTextureView(WGPUCommandEncoder enc, WGPUTextureView view, ImageUsageSnap usage){
-    
-    ru_trackTextureView(&enc->resourceUsage, view);
-    
-    ImageUsageRecord* alreadyThere = ImageUsageRecordMap_get(&enc->resourceUsage.referencedTextures, view->texture);
-    wgvk_assert(usage.stage, "Stage mask cannot be empty");
-    if(alreadyThere != NULL){
-        VkImageMemoryBarrier imageBarrier = {
-            VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            NULL,
-            alreadyThere->lastAccess,
-            usage.access,
-            alreadyThere->lastLayout,
-            usage.layout, 
-            enc->device->adapter->queueIndices.graphicsIndex,
-            enc->device->adapter->queueIndices.graphicsIndex,
-            view->texture->image,
-            view->subresourceRange
-        };
+static void ru_trackAndEncodeTextureViewVk(VkCommandBuffer buffer, ResourceUsage* resourceUsage, WGPUTextureView view, ImageUsageSnap usage){
+    OptionalBarrier barrier = ru_trackTextureViewAndEmit(resourceUsage, view, usage);
+    encoderOptionalBarrierVk(buffer, view->texture->device->functions.vkCmdPipelineBarrier, barrier);
+}
 
-        enc->device->functions.vkCmdPipelineBarrier(
-            enc->buffer,
-            alreadyThere->lastStage, 
-            usage.stage,
-            0, 
-            0, NULL, 
-            0, NULL, 
-            1, &imageBarrier
-        );
-        alreadyThere->lastStage  = usage.stage;
-        alreadyThere->lastAccess = usage.access;
-        alreadyThere->lastLayout = usage.layout;
-    }
-    else{
-        ImageUsageRecord record = {
-            .initialAccess = usage.access,
-            .initialStage = usage.stage,
-            .initialLayout = usage.layout,
-            .lastLayout = usage.layout,
-            .lastStage = usage.stage,
-            .lastAccess = usage.access,
-            .initiallyAccessedSubresource = view->subresourceRange,
-            .lastAccessedSubresource = view->subresourceRange
-        };
-        int newEntry = ImageUsageRecordMap_put(&enc->resourceUsage.referencedTextures, view->texture, record);
-        wgvk_assert(newEntry != 0, "_get failed, but _put did not return 1");
-        if(newEntry)
-            ++view->texture->refCount;
-    }
+static void ru_trackAndEncodeBufferVk(VkCommandBuffer buffer, ResourceUsage* resourceUsage, WGPUBuffer wbuffer, BufferUsageSnap usage){
+    OptionalBarrier barrier = ru_trackBufferAndEmit(resourceUsage, wbuffer, usage);
+    encoderOptionalBarrierVk(buffer, wbuffer->device->functions.vkCmdPipelineBarrier, barrier);
+}
+
+RGAPI void ce_trackTexture(WGPUCommandEncoder encoder, WGPUTexture texture, ImageUsageSnap usage){
+    ru_trackAndEncodeTexture(encoder, &encoder->resourceUsage, texture, usage);
+}
+
+RGAPI void ce_trackTextureView(WGPUCommandEncoder encoder, WGPUTextureView view, ImageUsageSnap usage){
+    
+    //ru_trackTextureView(&enc->resourceUsage, view); TODO verify if that is actually taken care of
+    
+    ru_trackAndEncodeTextureView(encoder, &encoder->resourceUsage, view, usage);
 }
 RGAPI void ce_trackBuffer(WGPUCommandEncoder encoder, WGPUBuffer buffer, BufferUsageSnap usage){
-    BufferUsageRecord* rec = BufferUsageRecordMap_get(&encoder->resourceUsage.referencedBuffers, buffer);
-    if(rec != NULL){
-        VkBufferMemoryBarrier bufferBarrier = {
-            VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            NULL,
-            rec->lastAccess,
-            usage.access, 
-            encoder->device->adapter->queueIndices.graphicsIndex,
-            encoder->device->adapter->queueIndices.graphicsIndex,
-            buffer->buffer,
-            0,
-            VK_WHOLE_SIZE
-        };
-
-        encoder->device->functions.vkCmdPipelineBarrier(
-            encoder->buffer,
-            rec->lastStage,
-            usage.stage,
-            0,
-            0, 0,
-            1, &bufferBarrier,
-            0, 0
-        );
-        rec->lastAccess = usage.access;
-        rec->lastStage = usage.stage;
-        rec->everWrittenTo |= isWritingAccess(usage.access);
-    }
-    else{
-        BufferUsageRecord record = {
-            .initialStage = usage.stage,
-            .initialAccess = usage.access,
-            .lastStage = usage.stage,
-            .lastAccess = usage.access,
-            .everWrittenTo = isWritingAccess(usage.access)
-        };
-        ru_trackBuffer(&encoder->resourceUsage, buffer, record);
-    }
-
+    
+    ru_trackAndEncodeBuffer(encoder, &encoder->resourceUsage, buffer, usage);
 }
 
 
