@@ -192,6 +192,11 @@ static const WGPUColorWriteMask WGPUColorWriteMask_Blue = 0x0000000000000004;
 static const WGPUColorWriteMask WGPUColorWriteMask_Alpha = 0x0000000000000008;
 static const WGPUColorWriteMask WGPUColorWriteMask_All = 0x000000000000000F;
 
+typedef enum WGPUStatus {
+    WGPUStatus_Success = 0x00000001,
+    WGPUStatus_Error = 0x00000002,
+    WGPUStatus_Force32 = 0x7FFFFFFF
+} WGPUStatus WGPU_ENUM_ATTRIBUTE;
 typedef enum WGPUWaitStatus {
     WGPUWaitStatus_Success = 0x00000001,
     WGPUWaitStatus_TimedOut = 0x00000002,
@@ -199,7 +204,7 @@ typedef enum WGPUWaitStatus {
     WGPUWaitStatus_Force32 = 0x7FFFFFFF
 } WGPUWaitStatus;
 
-typedef enum PresentMode{ 
+typedef enum WGPUPresentMode{ 
     WGPUPresentMode_Undefined = 0x00000000,
     WGPUPresentMode_Fifo = 0x00000001,
     WGPUPresentMode_FifoRelaxed = 0x00000002,
@@ -587,6 +592,14 @@ typedef enum WGPUBackendType {
     WGPUBackendType_Force32 = 0x7FFFFFFF
 } WGPUBackendType WGPU_ENUM_ATTRIBUTE;
 
+typedef enum WGPUAdapterType {
+    WGPUAdapterType_DiscreteGPU = 0x00000001,
+    WGPUAdapterType_IntegratedGPU = 0x00000002,
+    WGPUAdapterType_CPU = 0x00000003,
+    WGPUAdapterType_Unknown = 0x00000004,
+    WGPUAdapterType_Force32 = 0x7FFFFFFF
+} WGPUAdapterType WGPU_ENUM_ATTRIBUTE;
+
 typedef enum WGPUPowerPreference {
     WGPUPowerPreference_Undefined = 0x00000000,
     WGPUPowerPreference_LowPower = 0x00000001,
@@ -634,17 +647,10 @@ typedef struct WGPUChainedStruct {
     WGPUSType sType;
 } WGPUChainedStruct;
 
-typedef struct WGPUSurfaceSourceXlibWindow {
+typedef struct WGPUSurfaceSourceMetalLayer {
     WGPUChainedStruct chain;
-    void* display;
-    uint64_t window;
-} WGPUSurfaceSourceXlibWindow;
-
-typedef struct WGPUSurfaceSourceWaylandSurface {
-    WGPUChainedStruct chain;
-    void* display;
-    void* surface;
-} WGPUSurfaceSourceWaylandSurface;
+    void* layer;
+} WGPUSurfaceSourceMetalLayer;
 
 typedef struct WGPUSurfaceSourceWindowsHWND {
     WGPUChainedStruct chain;
@@ -652,11 +658,47 @@ typedef struct WGPUSurfaceSourceWindowsHWND {
     void * hwnd;
 } WGPUSurfaceSourceWindowsHWND;
 
+typedef struct WGPUSurfaceSourceXlibWindow {
+    WGPUChainedStruct chain;
+    void* display;
+    uint64_t window;
+} WGPUSurfaceSourceXlibWindow;
+
+typedef struct WGPUSurfaceSourceXCBWindow {
+    WGPUChainedStruct chain;
+    void* connection;
+    uint32_t window;
+} WGPUSurfaceSourceXCBWindow;
+
+typedef struct WGPUSurfaceSourceWaylandSurface {
+    WGPUChainedStruct chain;
+    void* display;
+    void* surface;
+} WGPUSurfaceSourceWaylandSurface;
+
+typedef struct WGPUSurfaceSourceAndroidNativeWindow {
+    WGPUChainedStruct chain;
+    void* window;
+} WGPUSurfaceSourceAndroidNativeWindow;
+
 typedef struct WGPUSurfaceDescriptor{
     WGPUChainedStruct* nextInChain;
     WGPUStringView label;
 } WGPUSurfaceDescriptor;
 
+typedef struct WGPUAdapterInfo {
+    WGPUChainedStruct * nextInChain;
+    WGPUStringView vendor;
+    WGPUStringView architecture;
+    WGPUStringView device;
+    WGPUStringView description;
+    WGPUBackendType backendType;
+    WGPUAdapterType adapterType;
+    uint32_t vendorID;
+    uint32_t deviceID;
+    uint32_t subgroupMinSize;
+    uint32_t subgroupMaxSize;
+} WGPUAdapterInfo WGPU_STRUCT_ATTRIBUTE;
 
 typedef struct WGPURequestAdapterOptions {
     WGPUChainedStruct * nextInChain;
@@ -669,7 +711,7 @@ typedef struct WGPURequestAdapterOptions {
 
 typedef struct WGPUInstanceCapabilities {
     WGPUChainedStruct* nextInChain;
-    Bool32 timedWaitAnyEnable;
+    WGPUBool timedWaitAnyEnable;
     size_t timedWaitAnyMaxCount;
 } WGPUInstanceCapabilities;
 typedef struct WGPUInstanceLayerSelection{
@@ -1386,13 +1428,6 @@ typedef struct WGPUSurfaceConfiguration {
     WGPUCompositeAlphaMode alphaMode;
     WGPUPresentMode presentMode;
 } WGPUSurfaceConfiguration WGPU_STRUCT_ATTRIBUTE;
-typedef enum WGPUAdapterType {
-    WGPUAdapterType_DiscreteGPU = 0x00000001,
-    WGPUAdapterType_IntegratedGPU = 0x00000002,
-    WGPUAdapterType_CPU = 0x00000003,
-    WGPUAdapterType_Unknown = 0x00000004,
-    WGPUAdapterType_Force32 = 0x7FFFFFFF
-} WGPUAdapterType;
 
 typedef void (*WGPURequestAdapterCallback)(WGPURequestAdapterStatus status, WGPUAdapter adapter, struct WGPUStringView message, void* userdata1, void* userdata2);
 typedef void (*WGPURequestDeviceCallback) (WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, WGPU_NULLABLE void* userdata1, WGPU_NULLABLE void* userdata2) WGPU_FUNCTION_ATTRIBUTE;
@@ -1447,6 +1482,8 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor *descriptor);
 WGPUWaitStatus wgpuInstanceWaitAny(WGPUInstance instance, size_t futureCount, WGPUFutureWaitInfo* futures, uint64_t timeoutNS);
 WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, const WGPURequestAdapterOptions* options, WGPURequestAdapterCallbackInfo callbackInfo);
 WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDescriptor* descriptor);
+WGPUStatus wgpuDeviceGetAdapterInfo(WGPUDevice device, WGPUAdapterInfo * adapterInfo) WGPU_FUNCTION_ATTRIBUTE;
+WGPUStatus wgpuAdapterGetLimits(WGPUAdapter adapter, WGPULimits * limits) WGPU_FUNCTION_ATTRIBUTE;
 WGPUFuture wgpuAdapterRequestDevice(WGPUAdapter adapter, WGPU_NULLABLE WGPUDeviceDescriptor const * options, WGPURequestDeviceCallbackInfo callbackInfo) WGPU_FUNCTION_ATTRIBUTE;
 WGPUQueue wgpuDeviceGetQueue(WGPUDevice device);
 void wgpuSurfaceGetCapabilities(WGPUSurface wgpuSurface, WGPUAdapter adapter, WGPUSurfaceCapabilities* capabilities);

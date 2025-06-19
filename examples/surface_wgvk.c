@@ -212,9 +212,7 @@ int main(){
     WGPUSurface surface = wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
-    printf("Alphamode count: %lu\n", caps.alphaModeCount);
-    printf("Alphamode 1: %d\n", caps.alphaModes[0]);
-    printf("Alphamode 2: %d\n", caps.alphaModes[1]);
+    
     wgpuSurfaceConfigure(surface, &(const WGPUSurfaceConfiguration){
         .alphaMode = WGPUCompositeAlphaMode_Opaque,
         .presentMode = desiredPresentMode,

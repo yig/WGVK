@@ -2123,7 +2123,7 @@ static inline VkImageUsageFlags toVulkanTextureUsage(WGPUTextureUsage usage, WGP
         vkUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
     if (usage & WGPUTextureUsage_RenderAttachment) {
-        if (format == WGPUTextureFormat_Depth24Plus || format == WGPUTextureFormat_Depth32Float) { // Assuming Depth24 and Depth32 are defined enum/macro values
+        if (format == WGPUTextureFormat_Depth16Unorm || format == WGPUTextureFormat_Depth32FloatStencil8 || format == WGPUTextureFormat_Depth24PlusStencil8 || format == WGPUTextureFormat_Depth24Plus || format == WGPUTextureFormat_Depth32Float) {
             vkUsage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         } else {
             vkUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;

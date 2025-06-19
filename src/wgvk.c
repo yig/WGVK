@@ -147,7 +147,6 @@ static inline uint32_t findMemoryType(WGPUAdapter adapter, uint32_t typeFilter, 
 }
 
 
-
 WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDescriptor* descriptor){
     wgvk_assert(descriptor->nextInChain, "SurfaceDescriptor must have a nextInChain");
     WGPUSurface ret = RL_CALLOC(1, sizeof(WGPUSurfaceImpl));
@@ -155,7 +154,17 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
     switch(descriptor->nextInChain->sType){
         #if SUPPORT_METAL_SURFACE
         case WGPUSType_SurfaceSourceMetalLayer:{
-
+            WGPUSurfaceSourceMetalLayer* metalSource = (WGPUSurfaceSourceMetalLayer*)descriptor->nextInChain;
+            VkMetalSurfaceCreateInfoEXT sci = {
+                .sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+                .pLayer = metalSource->layer
+            };
+            vkCreateMetalSurfaceEXT(
+                instance->instance,
+                &sci,
+                NULL,
+                &ret->surface
+            );
         }break;
         #endif
         #if SUPPORT_WIN32_SURFACE
@@ -176,15 +185,13 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
         }break;
         #endif
         #if SUPPORT_XLIB_SURFACE
-        
         case WGPUSType_SurfaceSourceXlibWindow:{
             WGPUSurfaceSourceXlibWindow* xlibSource = (WGPUSurfaceSourceXlibWindow*)descriptor->nextInChain;
             VkXlibSurfaceCreateInfoKHR sci = {
                 .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
-                .window = (uint64_t)xlibSource->window,
+                .window = xlibSource->window,
                 .dpy = (Display*)xlibSource->display
             };
-            //((PFN_vkCreateXlibSurfaceKHR)vkGetInstanceProcAddr(instance->instance, "vkCreateXlibSurfaceKHR"))
             vkCreateXlibSurfaceKHR
             (
                 instance->instance,
@@ -192,10 +199,8 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 NULL,
                 &ret->surface
             );
-            
         }break;
         #endif
-
         #if SUPPORT_WAYLAND_SURFACE
         case WGPUSType_SurfaceSourceWaylandSurface:{
             WGPUSurfaceSourceWaylandSurface* waylandSource = (WGPUSurfaceSourceWaylandSurface*)descriptor->nextInChain;
@@ -212,15 +217,35 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
             );
         }break;
         #endif
-
         #if SUPPORT_ANDROID_SURFACE
         case WGPUSType_SurfaceSourceAndroidNativeWindow:{
-            
+            WGPUSurfaceSourceAndroidNativeWindow* androidSource = (WGPUSurfaceSourceAndroidNativeWindow*)descriptor->nextInChain;
+            VkAndroidSurfaceCreateInfoKHR sci = {
+                .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
+                .window = (struct ANativeWindow*)androidSource->window
+            };
+            vkCreateAndroidSurfaceKHR(
+                instance->instance,
+                &sci,
+                NULL,
+                &ret->surface
+            );
         }break;
         #endif
         #if SUPPORT_XCB_SURFACE
         case WGPUSType_SurfaceSourceXCBWindow:{
-
+            WGPUSurfaceSourceXCBWindow* xcbSource = (WGPUSurfaceSourceXCBWindow*)descriptor->nextInChain;
+            VkXcbSurfaceCreateInfoKHR sci = {
+                .sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+                .connection = (xcb_connection_t*)xcbSource->connection,
+                .window = xcbSource->window
+            };
+            vkCreateXcbSurfaceKHR(
+                instance->instance,
+                &sci,
+                NULL,
+                &ret->surface
+            );
         }break;
         #endif
         default:{
@@ -228,6 +253,19 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
         }
     }
     return ret;
+}
+
+
+WGPUStatus wgpuDeviceGetAdapterInfo(WGPUDevice device, WGPUAdapterInfo* adapterInfo) WGPU_FUNCTION_ATTRIBUTE{
+    VkPhysicalDeviceProperties properties = {0};
+    vkGetPhysicalDeviceProperties(device->adapter->physicalDevice, &properties);
+    uint32_t len = strlen(properties.deviceName);
+    adapterInfo->device = (WGPUStringView){properties.deviceName, len};
+    adapterInfo->deviceID = properties.deviceID;
+
+}
+WGPUStatus wgpuAdapterGetLimits(WGPUAdapter adapter, WGPULimits * limits) WGPU_FUNCTION_ATTRIBUTE{
+
 }
 
 static RenderPassLayout GetRenderPassLayout2(const RenderPassCommandBegin* rpdesc){
@@ -3294,9 +3332,10 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
     else{
         correctedHeight = config->height;
     }
+    createInfo.minImageCount = SWAPCHAIN_ICLAMP_TEMP(vkCapabilities.minImageCount + 1, vkCapabilities.minImageCount, vkCapabilities.maxImageCount);
     #undef SWAPCHAIN_ICLAMP_TEMP
     
-    createInfo.minImageCount = vkCapabilities.minImageCount + 1;
+    
     createInfo.imageFormat = toVulkanPixelFormat(config->format);//swapchainImageFormat;
     surface->width  = correctedWidth;
     surface->height = correctedHeight;
@@ -3304,7 +3343,7 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
     VkExtent2D newExtent = {correctedWidth, correctedHeight};
     createInfo.imageExtent = newExtent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = toVulkanTextureUsage(config->usage, config->format);
 
     // Queue family indices
     uint32_t queueFamilyIndices[2] = {
