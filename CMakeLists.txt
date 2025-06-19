@@ -56,7 +56,9 @@ if(WGVK_BUILD_EXAMPLES)
 
     add_executable(surface_wgvk "examples/surface_wgvk.c")
     add_executable(basic_compute "examples/basic_compute.c")
+    add_executable(rgfw_surface "examples/rgfw_surface.c")
     
     target_link_libraries(surface_wgvk PUBLIC wgvk glfw)
     target_link_libraries(basic_compute PUBLIC wgvk glfw)
+    target_link_libraries(rgfw_surface PUBLIC wgvk)
 endif()

@@ -321,8 +321,6 @@ RenderPassLayout GetRenderPassLayout(const WGPURenderPassDescriptor* rpdesc){
         };
     }
     
-
-    
     ret.colorAttachmentCount = rpdesc->colorAttachmentCount;
     wgvk_assert(ret.colorAttachmentCount < MAX_COLOR_ATTACHMENTS, "Too many color attachments");
     for(uint32_t i = 0;i < rpdesc->colorAttachmentCount;i++){
@@ -348,6 +346,7 @@ RenderPassLayout GetRenderPassLayout(const WGPURenderPassDescriptor* rpdesc){
     }
     return ret;
 }
+
 static inline bool is__depthVk(VkFormat fmt){
     return fmt == VK_FORMAT_D32_SFLOAT || fmt == VK_FORMAT_D32_SFLOAT_S8_UINT || fmt == VK_FORMAT_D24_UNORM_S8_UINT;
 }
