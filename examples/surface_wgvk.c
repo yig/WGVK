@@ -4,6 +4,7 @@
 #include <stdio.h>
 //INCBIN(simple_shader, "../resources/simple_shader.wgsl");
 INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
+
 #ifndef STRVIEW
 #define STRVIEW(X) (WGPUStringView){X, sizeof(X) - 1}
 #endif
@@ -211,6 +212,9 @@ int main(){
     WGPUSurface surface = wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
+    printf("Alphamode count: %lu\n", caps.alphaModeCount);
+    printf("Alphamode 1: %d\n", caps.alphaModes[0]);
+    printf("Alphamode 2: %d\n", caps.alphaModes[1]);
     wgpuSurfaceConfigure(surface, &(const WGPUSurfaceConfiguration){
         .alphaMode = WGPUCompositeAlphaMode_Opaque,
         .presentMode = desiredPresentMode,
@@ -270,6 +274,7 @@ int main(){
     };
 
     WGPUColorTargetState colorTargetState = {
+        .writeMask = WGPUColorWriteMask_All,
         .format = WGPUTextureFormat_BGRA8Unorm,
         .blend = NULL
     };
@@ -355,7 +360,7 @@ int main(){
         });
         WGPUCommandEncoder cenc = wgpuDeviceCreateCommandEncoder(device, NULL);
         WGPURenderPassColorAttachment colorAttachment = {
-            .clearValue = (WGPUColor){0.5,0.2,0,1},
+            .clearValue = (WGPUColor){0.5,0.2,0,0.5},
             .loadOp = WGPULoadOp_Clear,
             .storeOp = WGPUStoreOp_Store,
             .view = surfaceView

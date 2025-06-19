@@ -3,7 +3,6 @@ project(wgvk)
 include(FetchContent)
 option(WGVK_BUILD_EXAMPLES "Build some WGVK examples" ON)
 option(WGVK_USE_VMA "Use GPUOpen's VMA allocator (Requires C++)" OFF)
-
 # Lock in static for now
 set(WGVK_SRC_LIST "src/wgvk.c")
 if(WGVK_USE_VMA)

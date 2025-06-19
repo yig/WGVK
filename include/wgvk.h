@@ -18,8 +18,10 @@ extern "C"{
 
 #if WGVK_DISABLE_ASSERT == 1
 
-    #if defined(__GNUC__) || defined(__clang__)
+    #if defined(__clang__)
         #define wgvk_assert(Condition, Message, ...) __builtin_assume(Condition)
+    #elif defined(__GNUC__)
+        #define wgvk_assert(Condition, Message, ...) do{if(!(Condition)){__builtin_unreachable();}}while(0)
     #elif defined(_MSC_VER)
         #include <intrin.h> // For __assume on MSVC
         #define wgvk_assert(Condition, Message, ...) __assume(Condition)
@@ -181,6 +183,15 @@ static const WGPUBufferUsage WGPUBufferUsage_ShaderDeviceAddress = 0x00000000100
 static const WGPUBufferUsage WGPUBufferUsage_AccelerationStructureInput = 0x0000000020000000;
 static const WGPUBufferUsage WGPUBufferUsage_AccelerationStructureStorage = 0x0000000040000000;
 static const WGPUBufferUsage WGPUBufferUsage_ShaderBindingTable = 0x0000000080000000;
+
+typedef WGPUFlags WGPUColorWriteMask;
+static const WGPUColorWriteMask WGPUColorWriteMask_None = 0x0000000000000000;
+static const WGPUColorWriteMask WGPUColorWriteMask_Red = 0x0000000000000001;
+static const WGPUColorWriteMask WGPUColorWriteMask_Green = 0x0000000000000002;
+static const WGPUColorWriteMask WGPUColorWriteMask_Blue = 0x0000000000000004;
+static const WGPUColorWriteMask WGPUColorWriteMask_Alpha = 0x0000000000000008;
+static const WGPUColorWriteMask WGPUColorWriteMask_All = 0x000000000000000F;
+
 typedef enum WGPUWaitStatus {
     WGPUWaitStatus_Success = 0x00000001,
     WGPUWaitStatus_TimedOut = 0x00000002,
@@ -337,7 +348,12 @@ typedef enum WGPUTextureViewDimension{
     WGPUTextureViewDimension_Force32 = 0x7FFFFFFF
 }WGPUTextureViewDimension;
 
-
+typedef enum WGPUOptionalBool {
+    WGPUOptionalBool_False = 0x00000000,
+    WGPUOptionalBool_True = 0x00000001,
+    WGPUOptionalBool_Undefined = 0x00000002,
+    WGPUOptionalBool_Force32 = 0x7FFFFFFF
+} WGPUOptionalBool WGPU_ENUM_ATTRIBUTE;
 
 typedef enum WGPUCullMode{
     WGPUCullMode_Undefined = 0x00000000,
@@ -774,6 +790,15 @@ typedef enum WGPUMapAsyncStatus {
     WGPUMapAsyncStatus_Force32 = 0x7FFFFFFF
 } WGPUMapAsyncStatus WGPU_ENUM_ATTRIBUTE;
 
+typedef enum WGPUCompositeAlphaMode {
+    WGPUCompositeAlphaMode_Auto = 0x00000000,
+    WGPUCompositeAlphaMode_Opaque = 0x00000001,
+    WGPUCompositeAlphaMode_Premultiplied = 0x00000002,
+    WGPUCompositeAlphaMode_Unpremultiplied = 0x00000003,
+    WGPUCompositeAlphaMode_Inherit = 0x00000004,
+    WGPUCompositeAlphaMode_Force32 = 0x7FFFFFFF
+} WGPUCompositeAlphaMode WGPU_ENUM_ATTRIBUTE;
+
 typedef struct WGPULimits {
     WGPUChainedStruct* nextInChain;
     uint32_t maxTextureDimension1D;
@@ -1050,13 +1075,16 @@ typedef struct WGPUSurfaceTexture {
     WGPUSurfaceGetCurrentTextureStatus status;
 } WGPUSurfaceTexture;
 
-typedef struct WGPUSurfaceCapabilities{
+typedef struct WGPUSurfaceCapabilities {
+    WGPUChainedStruct * nextInChain;
     WGPUTextureUsage usages;
     size_t formatCount;
-    WGPUTextureFormat const* formats;
+    WGPUTextureFormat const * formats;
     size_t presentModeCount;
     WGPUPresentMode const * presentModes;
-}WGPUSurfaceCapabilities;
+    size_t alphaModeCount;
+    WGPUCompositeAlphaMode const * alphaModes;
+} WGPUSurfaceCapabilities WGPU_STRUCT_ATTRIBUTE;
 
 typedef struct WGPUConstantEntry {
     WGPUChainedStruct* nextInChain;
@@ -1164,7 +1192,7 @@ typedef struct WGPUColorTargetState {
     WGPUChainedStruct* nextInChain;
     WGPUTextureFormat format;
     const WGPUBlendState* blend;
-    //WGPUColorWriteMask writeMask;
+    WGPUColorWriteMask writeMask;
 } WGPUColorTargetState;
 
 typedef struct WGPUFragmentState {
@@ -1346,23 +1374,18 @@ typedef struct WGPUComputePipelineDescriptor {
     WGPUComputeState compute;
 } WGPUComputePipelineDescriptor;
 
-typedef enum WGPUCompositeAlphaMode {
-    WGPUCompositeAlphaMode_Auto = 0x00000000,
-    WGPUCompositeAlphaMode_Opaque = 0x00000001,
-    WGPUCompositeAlphaMode_Premultiplied = 0x00000002,
-    WGPUCompositeAlphaMode_Unpremultiplied = 0x00000003,
-    WGPUCompositeAlphaMode_Inherit = 0x00000004,
-    WGPUCompositeAlphaMode_Force32 = 0x7FFFFFFF
-} WGPUCompositeAlphaMode WGPU_ENUM_ATTRIBUTE;
 typedef struct WGPUSurfaceConfiguration {
     WGPUChainedStruct* nextInChain;
-    WGPUDevice device;                // Device that surface belongs to (WPGUDevice or WGPUDevice)
-    uint32_t width;                   // Width of the rendering surface
-    uint32_t height;                  // Height of the rendering surface
-    WGPUTextureFormat format;               // Pixel format of the surface
-    WGPUCompositeAlphaMode alphaMode; // Composite alpha mode
-    WGPUPresentMode presentMode;          // Present mode for image presentation
-} WGPUSurfaceConfiguration;
+    WGPUDevice device;
+    WGPUTextureFormat format;
+    WGPUTextureUsage usage;
+    uint32_t width;
+    uint32_t height;
+    size_t viewFormatCount;
+    const WGPUTextureFormat* viewFormats;
+    WGPUCompositeAlphaMode alphaMode;
+    WGPUPresentMode presentMode;
+} WGPUSurfaceConfiguration WGPU_STRUCT_ATTRIBUTE;
 typedef enum WGPUAdapterType {
     WGPUAdapterType_DiscreteGPU = 0x00000001,
     WGPUAdapterType_IntegratedGPU = 0x00000002,

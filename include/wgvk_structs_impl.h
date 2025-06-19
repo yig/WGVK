@@ -1856,6 +1856,7 @@ typedef struct WGPUSurfaceImpl{
     VkColorSpaceKHR swapchainColorSpace;
     WGPUTexture* images;
     VkSemaphore* presentSemaphores;
+    WGPUSurfaceCapabilities capabilityCache;
 }WGPUSurfaceImpl;
 
 typedef struct WGPUQueueImpl{
@@ -2138,6 +2139,31 @@ static inline VkImageUsageFlags toVulkanTextureUsage(WGPUTextureUsage usage, WGP
 
     return vkUsage;
 }
+WGPUCompositeAlphaMode fromVulkanCompositeAlphaMode(VkCompositeAlphaFlagBitsKHR vkFlags){
+    if(vkFlags & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR){
+        return WGPUCompositeAlphaMode_Opaque;
+    }
+    if(vkFlags & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR){
+        return WGPUCompositeAlphaMode_Premultiplied;
+    }
+    if(vkFlags & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR){
+        return WGPUCompositeAlphaMode_Unpremultiplied;
+    }
+    if(vkFlags & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR){
+        return WGPUCompositeAlphaMode_Inherit;
+    }
+    return WGPUCompositeAlphaMode_Force32;
+}
+VkCompositeAlphaFlagBitsKHR toVulkanCompositeAlphaMode(WGPUCompositeAlphaMode wacm){
+    switch(wacm){
+        case WGPUCompositeAlphaMode_Opaque: return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        case WGPUCompositeAlphaMode_Premultiplied: return VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+        case WGPUCompositeAlphaMode_Unpremultiplied: return VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+        case WGPUCompositeAlphaMode_Inherit: return VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+        default: rg_unreachable();
+    }
+    return 0;
+}
 
 static inline VkImageAspectFlags toVulkanAspectMask(WGPUTextureAspect aspect){
     switch(aspect){
@@ -2241,6 +2267,26 @@ static inline VkBufferUsageFlags toVulkanBufferUsage(WGPUBufferUsage busg) {
 
 
     return usage;
+}
+
+static inline VkColorComponentFlags toVulkanColorWriteMask(WGPUColorWriteMask mask){
+    VkColorComponentFlags ret = 0;
+    if(mask == WGPUColorWriteMask_All){ // Open to the possibility of WGPUColorWriteMask_All == 0
+        return VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    }
+    if(mask & WGPUColorWriteMask_Red){
+        ret |= VK_COLOR_COMPONENT_R_BIT;
+    }
+    if(mask & WGPUColorWriteMask_Green){
+        ret |= VK_COLOR_COMPONENT_G_BIT;
+    }
+    if(mask & WGPUColorWriteMask_Blue){
+        ret |= VK_COLOR_COMPONENT_B_BIT;
+    }
+    if(mask & WGPUColorWriteMask_Alpha){
+        ret |= VK_COLOR_COMPONENT_A_BIT;
+    }
+    return ret;
 }
 static inline VkImageViewType toVulkanTextureViewDimension(WGPUTextureViewDimension dim){
     VkImageViewCreateInfo info;

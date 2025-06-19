@@ -3158,6 +3158,11 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
 
 
 void wgpuSurfaceGetCapabilities(WGPUSurface wgpuSurface, WGPUAdapter adapter, WGPUSurfaceCapabilities* capabilities){
+    if(wgpuSurface->capabilityCache.formatCount){
+        *capabilities = wgpuSurface->capabilityCache;
+        return;
+    }
+
     VkSurfaceKHR surface = wgpuSurface->surface;
     VkSurfaceCapabilitiesKHR scap zeroinit;
     VkPhysicalDevice vk_physicalDevice = adapter->physicalDevice;
@@ -3194,21 +3199,40 @@ void wgpuSurfaceGetCapabilities(WGPUSurface wgpuSurface, WGPUAdapter adapter, WG
         }
         wgpuSurface->presentModeCount = presentModeCount;
     }
-    capabilities->presentModeCount = wgpuSurface->presentModeCount;
-    capabilities->formatCount = wgpuSurface->wgpuFormatCount;
-
-    //WGPUPresentMode*   retpm = RL_CALLOC(presentModeCount, sizeof(WGPUPresentMode));
-    //WGPUTextureFormat* retfm = RL_CALLOC(formatCount,      sizeof(WGPUTextureFormat));
-
-    //for(uint32_t i = 0;i < wgpuSurface->presentModeCount;i++){
-    //    retpm[i] = wgpuSurface->presentModeCache[i];
-    //}
-    //for(uint32_t i = 0;i < wgpuSurface->formatCount;i++){
-    //    retfm[i] = fromVulkanPixelFormat(wgpuSurface->formatCache[i].format);
-    //}
-    capabilities->formats = wgpuSurface->wgpuFormatCache;
-    capabilities->presentModes = wgpuSurface->presentModeCache; 
-    capabilities->usages = fromVulkanWGPUTextureUsage(scap.supportedUsageFlags);
+    wgpuSurface->capabilityCache.presentModeCount = wgpuSurface->presentModeCount;
+    wgpuSurface->capabilityCache.formatCount = wgpuSurface->wgpuFormatCount;
+    wgpuSurface->capabilityCache.formats = wgpuSurface->wgpuFormatCache;
+    wgpuSurface->capabilityCache.presentModes = wgpuSurface->presentModeCache;
+    wgpuSurface->capabilityCache.usages = fromVulkanWGPUTextureUsage(scap.supportedUsageFlags);
+    wgpuSurface->capabilityCache.alphaModeCount = 0;
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR){
+        ++wgpuSurface->capabilityCache.alphaModeCount;
+    }
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR){
+        ++wgpuSurface->capabilityCache.alphaModeCount;
+    }
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR){
+        ++wgpuSurface->capabilityCache.alphaModeCount;
+    }
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR){
+        ++wgpuSurface->capabilityCache.alphaModeCount;
+    }
+    WGPUCompositeAlphaMode* alphaModes = RL_CALLOC(wgpuSurface->capabilityCache.alphaModeCount, sizeof(WGPUCompositeAlphaMode));
+    uint32_t amIndex = 0;
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR){
+        alphaModes[amIndex++] = WGPUCompositeAlphaMode_Opaque;
+    }
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR){
+        alphaModes[amIndex++] = WGPUCompositeAlphaMode_Premultiplied;
+    }
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR){
+        alphaModes[amIndex++] = WGPUCompositeAlphaMode_Premultiplied;
+    }
+    if(scap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR){
+        alphaModes[amIndex++] = WGPUCompositeAlphaMode_Inherit;
+    }
+    wgpuSurface->capabilityCache.alphaModes = alphaModes;
+    *capabilities = wgpuSurface->capabilityCache;
 }
 
 void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* config){
@@ -3299,7 +3323,7 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
     }
 
     createInfo.preTransform = vkCapabilities.currentTransform;
-    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    createInfo.compositeAlpha = toVulkanCompositeAlphaMode(config->alphaMode);
     createInfo.presentMode = toVulkanPresentMode(config->presentMode); 
     createInfo.clipped = VK_TRUE;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -3831,7 +3855,7 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
         for (size_t i = 0; i < descriptor->fragment->targetCount; ++i) {
             const WGPUColorTargetState* target = &descriptor->fragment->targets[i];
             // Defaults for no blending
-            colorBlendAttachments[i].colorWriteMask =  VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT; // TODO: Map WGPUColorWriteMask if exists
+            colorBlendAttachments[i].colorWriteMask =  toVulkanColorWriteMask(target->writeMask);
             colorBlendAttachments[i].blendEnable = VK_FALSE;
             colorBlendAttachments[i].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
             colorBlendAttachments[i].dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
