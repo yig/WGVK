@@ -249,40 +249,6 @@ typedef enum WGPUSType {
     WGPUSType_BufferAllocatorSelector = 0x10000002,
 }WGPUSType;
 
-typedef enum WGPU_VK_ImageLayout {
-    WGPU_VK_IMAGE_LAYOUT_UNDEFINED = 0,
-    WGPU_VK_IMAGE_LAYOUT_GENERAL = 1,
-    WGPU_VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL = 2,
-    WGPU_VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL = 3,
-    WGPU_VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL = 4,
-    WGPU_VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL = 5,
-    WGPU_VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL = 6,
-    WGPU_VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL = 7,
-    WGPU_VK_IMAGE_LAYOUT_PREINITIALIZED = 8,
-    WGPU_VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL = 1000117000,
-    WGPU_VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL = 1000117001,
-    WGPU_VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL = 1000241000,
-    WGPU_VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL = 1000241001,
-    WGPU_VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL = 1000241002,
-    WGPU_VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL = 1000241003,
-    WGPU_VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL = 1000314000,
-    WGPU_VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL = 1000314001,
-    WGPU_VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ = 1000232000,
-    WGPU_VK_IMAGE_LAYOUT_PRESENT_SRC_KHR = 1000001002,
-    WGPU_VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR = 1000024000,
-    WGPU_VK_IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR = 1000024001,
-    WGPU_VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR = 1000024002,
-    WGPU_VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR = 1000111000,
-    WGPU_VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT = 1000218000,
-    WGPU_VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR = 1000164003,
-    WGPU_VK_IMAGE_LAYOUT_VIDEO_ENCODE_DST_KHR = 1000299000,
-    WGPU_VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR = 1000299001,
-    WGPU_VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR = 1000299002,
-    WGPU_VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT = 1000339000,
-    WGPU_VK_IMAGE_LAYOUT_VIDEO_ENCODE_QUANTIZATION_MAP_KHR = 1000553000,
-    WGPU_VK_IMAGE_LAYOUT_MAX_ENUM = 0x7FFFFFFF
-} WGPU_VK_ImageLayout;
-
 typedef enum WGPUCallbackMode {
     WGPUCallbackMode_WaitAnyOnly = 0x00000001,
     WGPUCallbackMode_AllowProcessEvents = 0x00000002,
@@ -331,13 +297,13 @@ static const WGPUMapMode WGPUMapMode_Read = 0x0000000000000001;
 static const WGPUMapMode WGPUMapMode_Write = 0x0000000000000002;
 
 typedef enum TextureDimension{
-    TextureDimension_Undefined = 0x00000000,
-    TextureDimension_1D = 0x00000001,
-    TextureDimension_2D = 0x00000002,
+    WGPUTextureDimension_Undefined = 0x00000000,
+    WGPUTextureDimension_1D = 0x00000001,
+    WGPUTextureDimension_2D = 0x00000002,
     //TextureViewDimension_2DArray = 0x00000003,
     //TextureViewDimension_Cube = 0x00000004,
     //TextureViewDimension_CubeArray = 0x00000005,
-    TextureDimension_3D = 0x00000003
+    WGPUTextureDimension_3D = 0x00000003
 }WGPUTextureDimension;
 
 
@@ -1468,8 +1434,6 @@ typedef struct WGPUTopLevelAccelerationStructureDescriptor {
 #ifdef __cplusplus
 extern "C"{
 #endif
-void wgpuQueueTransitionLayout                (WGPUQueue cSelf, WGPUTexture texture, WGPU_VK_ImageLayout from, WGPU_VK_ImageLayout to);
-void wgpuCommandEncoderTransitionTextureLayout(WGPUCommandEncoder encoder, WGPUTexture texture, WGPU_VK_ImageLayout from, WGPU_VK_ImageLayout to);
 WGPUTopLevelAccelerationStructure wgpuDeviceCreateTopLevelAccelerationStructure(WGPUDevice device, const WGPUTopLevelAccelerationStructureDescriptor *descriptor);
 WGPUBottomLevelAccelerationStructure wgpuDeviceCreateBottomLevelAccelerationStructure(WGPUDevice device, const WGPUBottomLevelAccelerationStructureDescriptor *descriptor);
 #ifdef __cplusplus
@@ -1492,6 +1456,16 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
 void wgpuSurfaceRelease(WGPUSurface surface);
 WGPUTexture wgpuDeviceCreateTexture(WGPUDevice device, const WGPUTextureDescriptor* descriptor);
 WGPUTextureView wgpuTextureCreateView(WGPUTexture texture, const WGPUTextureViewDescriptor *descriptor);
+
+uint32_t wgpuTextureGetDepthOrArrayLayers(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+WGPUTextureDimension wgpuTextureGetDimension(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+WGPUTextureFormat wgpuTextureGetFormat(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+uint32_t wgpuTextureGetHeight(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+uint32_t wgpuTextureGetMipLevelCount(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+uint32_t wgpuTextureGetSampleCount(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+WGPUTextureUsage wgpuTextureGetUsage(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+uint32_t wgpuTextureGetWidth(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE;
+
 WGPUSampler wgpuDeviceCreateSampler(WGPUDevice device, const WGPUSamplerDescriptor* descriptor);
 WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor* desc);
 void wgpuQueueWriteBuffer(WGPUQueue cSelf, WGPUBuffer buffer, uint64_t bufferOffset, const void* data, size_t size);

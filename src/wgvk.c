@@ -256,24 +256,43 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
 }
 
 
-WGPUStatus wgpuDeviceGetAdapterInfo(WGPUDevice device, WGPUAdapterInfo* adapterInfo) WGPU_FUNCTION_ATTRIBUTE{
+WGPUStatus wgpuDeviceGetAdapterInfo(WGPUDevice device, WGPUAdapterInfo* adapterInfo) WGPU_FUNCTION_ATTRIBUTE {
+    // 1. Validate input parameters
+    if (device == NULL || adapterInfo == NULL || device->adapter == NULL || device->adapter->physicalDevice == VK_NULL_HANDLE) {
+        // Return an error if any required input or internal pointer is null
+        return WGPUStatus_Error;
+    }
     VkPhysicalDeviceSubgroupProperties subgroupProperties = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES,
+        .pNext = NULL // Ensure pNext is null if no further structures are chained
     };
-    VkPhysicalDeviceProperties2KHR deviceProperties2;
-    deviceProperties2.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-    deviceProperties2.pNext      = &subgroupProperties;
+    VkPhysicalDeviceProperties2KHR deviceProperties2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &subgroupProperties // Chain subgroupProperties here
+    };
 
     vkGetPhysicalDeviceProperties2(device->adapter->physicalDevice, &deviceProperties2);
-    uint32_t len = strlen(deviceProperties2.properties.deviceName);
-    adapterInfo->device = (WGPUStringView){deviceProperties2.properties.deviceName, len};
+
+    strncpy(device->adapter->cachedDeviceName, deviceProperties2.properties.deviceName, VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1);
+    device->adapter->cachedDeviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1] = '\0'; // Explicitly null-terminate
+
+    // Set the WGPUStringView to point to the stable, cached string.
+    uint32_t len = strlen(device->adapter->cachedDeviceName);
+    adapterInfo->device = (WGPUStringView){device->adapter->cachedDeviceName, len};
+
+    // Populate other fields
     adapterInfo->deviceID = deviceProperties2.properties.deviceID;
+
     adapterInfo->subgroupMinSize = subgroupProperties.subgroupSize;
     adapterInfo->subgroupMaxSize = subgroupProperties.subgroupSize;
-    
+
+    // 5. Return success
     return WGPUStatus_Success;
 }
-WGPUStatus wgpuAdapterGetLimits(WGPUAdapter adapter, WGPULimits * limits) WGPU_FUNCTION_ATTRIBUTE{
+#ifndef MIN
+    #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+WGPUStatus wgpuAdapterGetLimits(WGPUAdapter adapter, WGPULimits* limits) WGPU_FUNCTION_ATTRIBUTE{
     VkPhysicalDeviceSubgroupProperties subgroupProperties = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES
     };
@@ -282,6 +301,47 @@ WGPUStatus wgpuAdapterGetLimits(WGPUAdapter adapter, WGPULimits * limits) WGPU_F
     deviceProperties2.pNext      = &subgroupProperties;
 
     vkGetPhysicalDeviceProperties2(adapter->physicalDevice, &deviceProperties2);
+
+    // Map Vulkan limits to WGPULimits
+    limits->maxTextureDimension1D = deviceProperties2.properties.limits.maxImageDimension1D;
+    limits->maxTextureDimension2D = deviceProperties2.properties.limits.maxImageDimension2D;
+    limits->maxTextureDimension3D = deviceProperties2.properties.limits.maxImageDimension3D;
+    limits->maxTextureArrayLayers = deviceProperties2.properties.limits.maxImageArrayLayers;
+    limits->maxBindGroups = deviceProperties2.properties.limits.maxBoundDescriptorSets;
+    limits->maxBindGroupsPlusVertexBuffers = deviceProperties2.properties.limits.maxBoundDescriptorSets + deviceProperties2.properties.limits.maxVertexInputBindings;
+    limits->maxBindingsPerBindGroup = deviceProperties2.properties.limits.maxPerStageResources;
+    limits->maxDynamicUniformBuffersPerPipelineLayout = deviceProperties2.properties.limits.maxDescriptorSetUniformBuffersDynamic;
+    limits->maxDynamicStorageBuffersPerPipelineLayout = deviceProperties2.properties.limits.maxDescriptorSetStorageBuffersDynamic;
+    limits->maxSampledTexturesPerShaderStage = deviceProperties2.properties.limits.maxPerStageDescriptorSampledImages;
+    limits->maxSamplersPerShaderStage = deviceProperties2.properties.limits.maxPerStageDescriptorSamplers;
+    limits->maxStorageBuffersPerShaderStage = deviceProperties2.properties.limits.maxPerStageDescriptorStorageBuffers;
+    limits->maxStorageTexturesPerShaderStage = deviceProperties2.properties.limits.maxPerStageDescriptorStorageImages;
+    limits->maxUniformBuffersPerShaderStage = deviceProperties2.properties.limits.maxPerStageDescriptorUniformBuffers;
+    limits->maxUniformBufferBindingSize = deviceProperties2.properties.limits.maxUniformBufferRange;
+    limits->maxStorageBufferBindingSize = deviceProperties2.properties.limits.maxStorageBufferRange;
+    limits->minUniformBufferOffsetAlignment = deviceProperties2.properties.limits.minUniformBufferOffsetAlignment;
+    limits->minStorageBufferOffsetAlignment = deviceProperties2.properties.limits.minStorageBufferOffsetAlignment;
+    limits->maxVertexBuffers = deviceProperties2.properties.limits.maxVertexInputBindings;
+    limits->maxBufferSize = deviceProperties2.properties.limits.maxMemoryAllocationCount; // This is a weak mapping, ideally there's a buffer size limit.
+    limits->maxVertexAttributes = deviceProperties2.properties.limits.maxVertexInputAttributes;
+    limits->maxVertexBufferArrayStride = deviceProperties2.properties.limits.maxVertexInputBindingStride;
+    limits->maxInterStageShaderVariables = deviceProperties2.properties.limits.maxFragmentInputComponents; // Assuming this maps to inter-stage variables.
+    limits->maxColorAttachments = deviceProperties2.properties.limits.maxColorAttachments;
+
+    limits->maxComputeWorkgroupStorageSize = deviceProperties2.properties.limits.maxComputeSharedMemorySize;
+    limits->maxComputeInvocationsPerWorkgroup = deviceProperties2.properties.limits.maxComputeWorkGroupInvocations;
+    limits->maxComputeWorkgroupSizeX = deviceProperties2.properties.limits.maxComputeWorkGroupSize[0];
+    limits->maxComputeWorkgroupSizeY = deviceProperties2.properties.limits.maxComputeWorkGroupSize[1];
+    limits->maxComputeWorkgroupSizeZ = deviceProperties2.properties.limits.maxComputeWorkGroupSize[2];
+    limits->maxComputeWorkgroupsPerDimension = MIN(deviceProperties2.properties.limits.maxComputeWorkGroupCount[0],
+                                                 MIN(deviceProperties2.properties.limits.maxComputeWorkGroupCount[1],
+                                                     deviceProperties2.properties.limits.maxComputeWorkGroupCount[2]));
+    
+    limits->maxStorageBuffersInVertexStage = deviceProperties2.properties.limits.maxPerStageDescriptorStorageBuffers;
+    limits->maxStorageTexturesInVertexStage = deviceProperties2.properties.limits.maxPerStageDescriptorStorageImages;
+    limits->maxStorageBuffersInFragmentStage = deviceProperties2.properties.limits.maxPerStageDescriptorStorageBuffers;
+    limits->maxStorageTexturesInFragmentStage = deviceProperties2.properties.limits.maxPerStageDescriptorStorageImages;
+
     return WGPUStatus_Success;
 }
 
@@ -718,14 +778,14 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
                 int found = 0;
                 uint32_t al = 0;
                 for(al = 0;al < availableLayerCount;al++){
-                    if(memcmp(availableLayers[al].layerName, layerName, strlen(availableLayers[al].layerName)) == 0){
+                    if(strcmp(availableLayers[al].layerName, layerName) == 0){
                         found = 1;
                         break;
                     }
                 }
                 if(found){
                     char* dest = nullTerminatedRequestedLayers[requestedAvailableLayerCount];
-                    memcpy(dest, layerName, strlen(availableLayers[al].layerName));
+                    memcpy(dest, layerName, strlen(layerName));
                     nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = dest;
                     ++requestedAvailableLayerCount;
                 }
@@ -1589,19 +1649,22 @@ WGPUTexture wgpuDeviceCreateTexture(WGPUDevice device, const WGPUTextureDescript
     VkDeviceMemory imageMemory zeroinit;
     // Adjust usage flags based on format (e.g., depth formats might need different usages)
     WGPUTexture ret = RL_CALLOC(1, sizeof(WGPUTextureImpl));
-
-    VkImageCreateInfo imageInfo zeroinit;
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent = (VkExtent3D){ descriptor->size.width, descriptor->size.height, descriptor->size.depthOrArrayLayers };
-    imageInfo.mipLevels = descriptor->mipLevelCount;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = toVulkanPixelFormat(descriptor->format);
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = toVulkanTextureUsage(descriptor->usage, descriptor->format);
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    imageInfo.samples = toVulkanSampleCount(descriptor->sampleCount);
+    ret->usage = toVulkanTextureUsage(descriptor->usage, descriptor->format);
+    ret->dimension = toVulkanTextureDimension(descriptor->dimension);
+    VkImageCreateInfo imageInfo = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = NULL,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .extent = (VkExtent3D){ descriptor->size.width, descriptor->size.height, descriptor->size.depthOrArrayLayers },
+        .mipLevels = descriptor->mipLevelCount,
+        .arrayLayers = 1,
+        .format = toVulkanPixelFormat(descriptor->format),
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = toVulkanTextureUsage(descriptor->usage, descriptor->format),
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .samples = toVulkanSampleCount(descriptor->sampleCount),
+    };
     
     VkImage image zeroinit;
     if (device->functions.vkCreateImage(device->device, &imageInfo, NULL, &image) != VK_SUCCESS)
@@ -2137,6 +2200,32 @@ WGPUTextureView wgpuTextureCreateView(WGPUTexture texture, const WGPUTextureView
     Texture_ViewCache_put(&texture->viewCache, key, ret);
     return ret;
 }
+
+uint32_t wgpuTextureGetDepthOrArrayLayers(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return texture->depthOrArrayLayers;
+}
+WGPUTextureDimension wgpuTextureGetDimension(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return fromVulkanTextureDimension(texture->dimension);
+}
+WGPUTextureFormat wgpuTextureGetFormat(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return fromVulkanPixelFormat(texture->format);
+}
+uint32_t wgpuTextureGetHeight(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return texture->height;
+}
+uint32_t wgpuTextureGetMipLevelCount(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return texture->mipLevels;
+}
+uint32_t wgpuTextureGetSampleCount(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return texture->sampleCount;
+}
+WGPUTextureUsage wgpuTextureGetUsage(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return fromVulkanWGPUTextureUsage(texture->usage);
+}
+uint32_t wgpuTextureGetWidth(WGPUTexture texture) WGPU_FUNCTION_ATTRIBUTE{
+    return texture->width;
+}
+
 static inline VkClearValue toVkCV(const WGPUColor c){
     return (VkClearValue){
         .color.float32 = {
@@ -4503,8 +4592,9 @@ void wgpuSurfaceGetCurrentTexture(WGPUSurface surface, WGPUSurfaceTexture* surfa
             VK_NULL_HANDLE,
             &surface->activeImageIndex
         );
-        surface->device->queue->syncState[cacheIndex].acquireImageSemaphoreSignalled = true;
-
+        if(acquireResult == VK_SUCCESS || acquireResult == VK_SUBOPTIMAL_KHR){
+            surface->device->queue->syncState[cacheIndex].acquireImageSemaphoreSignalled = true;
+        }
         switch(acquireResult){
             case VK_SUBOPTIMAL_KHR:
                 surfaceTexture->status = WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal;

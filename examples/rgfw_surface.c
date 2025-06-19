@@ -140,7 +140,7 @@ int main(){
 
     int width, height;
     WGPUSurfaceCapabilities caps = {0};
-    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Mailbox;
+    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Immediate;
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
     
@@ -263,14 +263,11 @@ int main(){
     uint64_t stamp = nanoTime();
     uint64_t frameCount = 0;
     while(!RGFW_window_shouldClose(window)){
-                while (RGFW_window_checkEvent(window)) {
+        while (RGFW_window_checkEvent(window)) {
             if (window->event.type == RGFW_quit) break;
             
             if (window->event.type == RGFW_mouseButtonPressed && window->event.button == RGFW_mouseLeft) {
                 printf("You clicked at x: %d, y: %d\n", window->event.point.x, window->event.point.y);
-            }
-            if (RGFW_isMousePressed(window, RGFW_mouseRight)) {
-
             }
         }
         wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
@@ -309,8 +306,8 @@ int main(){
             .colorAttachments = &colorAttachment,
         });
         //wgpuRenderPassEncoderSetScissorRect(rpenc, 0, 0, (frameCount / 8) % 1000, height);
-        //wgpuRenderPassEncoderSetPipeline(rpenc, rp);
-        //wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0);
+        wgpuRenderPassEncoderSetPipeline(rpenc, rp);
+        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0);
         //wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
         wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
         wgpuRenderPassEncoderEnd(rpenc);

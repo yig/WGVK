@@ -1494,6 +1494,7 @@ typedef struct WGPUInstanceImpl{
 typedef struct WGPUAdapterImpl{
     VkPhysicalDevice physicalDevice;
     refcount_type refCount;
+    char cachedDeviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
     WGPUInstance instance;
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties;
     VkPhysicalDeviceMemoryProperties memProperties;
@@ -1646,7 +1647,9 @@ DEFINE_GENERIC_HASH_MAP(static inline, Texture_ViewCache, SlimViewCreateInfo, WG
 typedef struct WGPUTextureImpl{
     VkImage image;
     VkFormat format;
+    VkImageUsageFlags usage;
     VkImageLayout layout;
+    VkImageType dimension;
     VkDeviceMemory memory;
     WGPUDevice device;
     refcount_type refCount;
@@ -2317,17 +2320,34 @@ static inline VkImageType toVulkanTextureDimension(WGPUTextureDimension dim){
         case 0:{
             rg_unreachable();
         }
-        case TextureDimension_1D:{
+        case WGPUTextureDimension_1D:{
             return VK_IMAGE_TYPE_1D;
         }
-        case TextureDimension_2D:{
+        case WGPUTextureDimension_2D:{
             return VK_IMAGE_TYPE_2D;
         }
-        case TextureDimension_3D:{
+        case WGPUTextureDimension_3D:{
             return VK_IMAGE_TYPE_3D;
         }
     }
 }
+static inline WGPUTextureDimension fromVulkanTextureDimension(VkImageType dim){
+    VkImageViewCreateInfo info;
+    switch(dim){
+        default:
+            rg_unreachable();
+        case VK_IMAGE_TYPE_1D:{
+            return WGPUTextureDimension_1D;
+        }
+        case VK_IMAGE_TYPE_2D:{
+            return WGPUTextureDimension_2D;
+        }
+        case VK_IMAGE_TYPE_3D:{
+            return WGPUTextureDimension_3D;
+        }
+    }
+}
+
 
 // Converts WGPUTextureFormat to VkFormat
 static inline VkFormat toVulkanPixelFormat(WGPUTextureFormat format) {
