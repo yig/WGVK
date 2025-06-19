@@ -912,6 +912,13 @@ static size_t sort_uniqueuints(uint32_t *arr, size_t count) {
     (b) = temp; \
 } while (0)
 
+typedef struct userdataforcreatedevice{
+    WGPUAdapter adapter;
+    WGPUDeviceDescriptor deviceDescriptor;
+    WGPURequestDeviceCallbackInfo callbackInfo;
+}userdataforcreatedevice;
+
+
 WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescriptor* descriptor){
     //std::pair<WGPUDevice, WGPUQueue> ret = {0,0};
     
@@ -1177,6 +1184,45 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     RL_FREE(deprops);
     return retDevice;
 }
+
+static void wgpuAdapterCreateDevice_sync(void* userdata){
+    userdataforcreatedevice* data = (userdataforcreatedevice*)userdata;
+    WGPUDevice device = wgpuAdapterCreateDevice(data->adapter, &data->deviceDescriptor);
+    if(device){
+        data->callbackInfo.callback(
+            WGPURequestDeviceStatus_Success,
+            device,
+            (WGPUStringView){0},
+            data->callbackInfo.userdata1,
+            data->callbackInfo.userdata2
+        );
+    }
+    else{
+        data->callbackInfo.callback(
+            WGPURequestDeviceStatus_Error,
+            NULL,
+            STRVIEW("Error"),
+            data->callbackInfo.userdata1,
+            data->callbackInfo.userdata2
+        );
+    }
+}
+
+WGPUFuture wgpuAdapterRequestDevice(WGPUAdapter adapter, WGPU_NULLABLE WGPUDeviceDescriptor const * options, WGPURequestDeviceCallbackInfo callbackInfo) WGPU_FUNCTION_ATTRIBUTE{
+    userdataforcreatedevice* userdata = RL_CALLOC(1, sizeof(userdataforcreatedevice));
+    userdata->adapter = adapter;
+    userdata->callbackInfo = callbackInfo;
+    userdata->deviceDescriptor = *options;
+    WGPUFutureImpl impl = {
+        .userdataForFunction = userdata,
+        .functionCalledOnWaitAny = wgpuAdapterCreateDevice_sync,
+        .freeUserData = RL_FREE
+    };
+    uint64_t id = adapter->instance->currentFutureId++;
+    FutureIDMap_put(&adapter->instance->g_futureIDMap, id, impl);
+    return (WGPUFuture){id};
+}
+
 WGPUQueue wgpuDeviceGetQueue(WGPUDevice device){
     wgpuQueueAddRef(device->queue);
     return device->queue;
@@ -4910,7 +4956,7 @@ static void encoderOptionalBarrierVk(VkCommandBuffer buffer, PFN_vkCmdPipelineBa
             memoryBarrier = &barrier.memoryBarrier;
             ++memoryBarriers;
         }break;
-        
+
         default: return;
     }
     barrier_fn(

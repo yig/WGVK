@@ -82,6 +82,15 @@ void adapterCallbackFunction(
     ){
     *((WGPUAdapter*)userdata1) = adapter;
 }
+void deviceCallbackFunction(
+        WGPURequestDeviceStatus status,
+        WGPUDevice device,
+        WGPUStringView message,
+        void* userdata1,
+        void* userdata2
+    ){
+    *((WGPUDevice*)userdata1) = device;
+}
 void keyfunc(GLFWwindow* window, int key, int scancode, int action, int mods){
     if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS){
         return glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -128,7 +137,7 @@ int main(){
     wgpuInstanceWaitAny(instance, 1, &winfo, ~0ull);
     WGPUStringView deviceLabel = {"WGPU Device", sizeof("WGPU Device") - 1};
 
-    WGPUDeviceDescriptor ddesc = {
+    WGPUDeviceDescriptor deviceDescriptor = {
         .nextInChain = 0,
         .label = deviceLabel,
         .requiredFeatureCount = 0,
@@ -138,8 +147,20 @@ int main(){
         .deviceLostCallbackInfo = {0},
         .uncapturedErrorCallbackInfo = {0},
     };
-    
-    WGPUDevice device = wgpuAdapterCreateDevice(requestedAdapter, &ddesc);
+
+    WGPUDevice device = NULL;
+    WGPURequestDeviceCallbackInfo requestDeviceCallbackInfo = {
+        .callback = deviceCallbackFunction,
+        .mode = WGPUCallbackMode_WaitAnyOnly,
+        .userdata1 = &device
+    };
+    WGPUFuture requestDeviceFuture = wgpuAdapterRequestDevice(requestedAdapter, &deviceDescriptor, requestDeviceCallbackInfo);
+    WGPUFutureWaitInfo requestDeviceFutureWaitInfo = {
+        .future = requestDeviceFuture,
+        .completed = 0
+    };
+    wgpuInstanceWaitAny(instance, 1, &requestDeviceFutureWaitInfo, ~0ull);
+
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     glfwInit();
     

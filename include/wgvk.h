@@ -18,19 +18,25 @@ extern "C"{
 
 #if WGVK_DISABLE_ASSERT == 1
 
-#define wgvk_assert(Condition, Message, ...) //__builtin_assume(Condition)
+    #if defined(__GNUC__) || defined(__clang__)
+        #define wgvk_assert(Condition, Message, ...) __builtin_assume(Condition)
+    #elif defined(_MSC_VER)
+        #include <intrin.h> // For __assume on MSVC
+        #define wgvk_assert(Condition, Message, ...) __assume(Condition)
+    #else
+        #define wgvk_assert(Condition, Message, ...) ((void)0)
+    #endif
 
 #else
-#define wgvk_assert(Condition, Message, ...)                                                          \
-do {                                                                                              \
-    char buffer_for_snprintf_sdfsd[4096] = {0};                                                   \
-    snprintf(buffer_for_snprintf_sdfsd, 4096, "Internal bug: assertion failed: %s", Message);     \
-    if (!(Condition)) {                                                                           \
-        rg_trap();                                                                                \
-        abort();                                                                                  \
-    }                                                                                             \
-} while (0)
-
+    #define wgvk_assert(Condition, Message, ...)                                                      \
+    do {                                                                                              \
+        char buffer_for_snprintf_sdfsd[4096] = {0};                                                   \
+        snprintf(buffer_for_snprintf_sdfsd, 4096, "Internal bug: assertion failed: %s", Message);     \
+        if (!(Condition)) {                                                                           \
+            rg_trap();                                                                                \
+            abort();                                                                                  \
+        }                                                                                             \
+    } while (0)
 #endif
 
 #define WGPU_ENUM_ATTRIBUTE
@@ -385,6 +391,12 @@ typedef enum WGPURequestAdapterStatus {
     WGPURequestAdapterStatus_Force32 = 0x7FFFFFFF
 } WGPURequestAdapterStatus WGPU_ENUM_ATTRIBUTE;
 
+typedef enum WGPURequestDeviceStatus {
+    WGPURequestDeviceStatus_Success = 0x00000001,
+    WGPURequestDeviceStatus_CallbackCancelled = 0x00000002,
+    WGPURequestDeviceStatus_Error = 0x00000003,
+    WGPURequestDeviceStatus_Force32 = 0x7FFFFFFF
+} WGPURequestDeviceStatus WGPU_ENUM_ATTRIBUTE;
 
 typedef enum WGPUBufferBindingType {
     WGPUBufferBindingType_BindingNotUsed = 0x00000000,
@@ -890,11 +902,11 @@ typedef struct WGPUDeviceDescriptor {
     WGPUStringView label;
     size_t requiredFeatureCount;
     WGPUFeatureName const * requiredFeatures;
-    WGPULimits const * requiredLimits;
+    WGPU_NULLABLE WGPULimits const * requiredLimits;
     WGPUQueueDescriptor defaultQueue;
     WGPUDeviceLostCallbackInfo deviceLostCallbackInfo;
     WGPUUncapturedErrorCallbackInfo uncapturedErrorCallbackInfo;
-} WGPUDeviceDescriptor;
+} WGPUDeviceDescriptor WGPU_STRUCT_ATTRIBUTE;
 
 typedef struct WGPUColor {
     double r;
@@ -1360,6 +1372,8 @@ typedef enum WGPUAdapterType {
 } WGPUAdapterType;
 
 typedef void (*WGPURequestAdapterCallback)(WGPURequestAdapterStatus status, WGPUAdapter adapter, struct WGPUStringView message, void* userdata1, void* userdata2);
+typedef void (*WGPURequestDeviceCallback) (WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, WGPU_NULLABLE void* userdata1, WGPU_NULLABLE void* userdata2) WGPU_FUNCTION_ATTRIBUTE;
+
 typedef struct WGPURequestAdapterCallbackInfo {
     WGPUChainedStruct * nextInChain;
     WGPUCallbackMode mode;
@@ -1367,6 +1381,14 @@ typedef struct WGPURequestAdapterCallbackInfo {
     void* userdata1;
     void* userdata2;
 } WGPURequestAdapterCallbackInfo;
+
+typedef struct WGPURequestDeviceCallbackInfo {
+    WGPUChainedStruct * nextInChain;
+    WGPUCallbackMode mode;
+    WGPURequestDeviceCallback callback;
+    WGPU_NULLABLE void* userdata1;
+    WGPU_NULLABLE void* userdata2;
+} WGPURequestDeviceCallbackInfo WGPU_STRUCT_ATTRIBUTE;
 
 typedef struct WGPUBottomLevelAccelerationStructureDescriptor {
     WGPUBuffer vertexBuffer;          // Buffer containing vertex data
@@ -1402,7 +1424,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor *descriptor);
 WGPUWaitStatus wgpuInstanceWaitAny(WGPUInstance instance, size_t futureCount, WGPUFutureWaitInfo* futures, uint64_t timeoutNS);
 WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, const WGPURequestAdapterOptions* options, WGPURequestAdapterCallbackInfo callbackInfo);
 WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDescriptor* descriptor);
-WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescriptor *descriptor);
+WGPUFuture wgpuAdapterRequestDevice(WGPUAdapter adapter, WGPU_NULLABLE WGPUDeviceDescriptor const * options, WGPURequestDeviceCallbackInfo callbackInfo) WGPU_FUNCTION_ATTRIBUTE;
 WGPUQueue wgpuDeviceGetQueue(WGPUDevice device);
 void wgpuSurfaceGetCapabilities(WGPUSurface wgpuSurface, WGPUAdapter adapter, WGPUSurfaceCapabilities* capabilities);
 void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* config);
