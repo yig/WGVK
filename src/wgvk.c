@@ -257,15 +257,32 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
 
 
 WGPUStatus wgpuDeviceGetAdapterInfo(WGPUDevice device, WGPUAdapterInfo* adapterInfo) WGPU_FUNCTION_ATTRIBUTE{
-    VkPhysicalDeviceProperties properties = {0};
-    vkGetPhysicalDeviceProperties(device->adapter->physicalDevice, &properties);
-    uint32_t len = strlen(properties.deviceName);
-    adapterInfo->device = (WGPUStringView){properties.deviceName, len};
-    adapterInfo->deviceID = properties.deviceID;
+    VkPhysicalDeviceSubgroupProperties subgroupProperties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES
+    };
+    VkPhysicalDeviceProperties2KHR deviceProperties2;
+    deviceProperties2.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    deviceProperties2.pNext      = &subgroupProperties;
 
+    vkGetPhysicalDeviceProperties2(device->adapter->physicalDevice, &deviceProperties2);
+    uint32_t len = strlen(deviceProperties2.properties.deviceName);
+    adapterInfo->device = (WGPUStringView){deviceProperties2.properties.deviceName, len};
+    adapterInfo->deviceID = deviceProperties2.properties.deviceID;
+    adapterInfo->subgroupMinSize = subgroupProperties.subgroupSize;
+    adapterInfo->subgroupMaxSize = subgroupProperties.subgroupSize;
+    
+    return WGPUStatus_Success;
 }
 WGPUStatus wgpuAdapterGetLimits(WGPUAdapter adapter, WGPULimits * limits) WGPU_FUNCTION_ATTRIBUTE{
+    VkPhysicalDeviceSubgroupProperties subgroupProperties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES
+    };
+    VkPhysicalDeviceProperties2KHR deviceProperties2;
+    deviceProperties2.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    deviceProperties2.pNext      = &subgroupProperties;
 
+    vkGetPhysicalDeviceProperties2(adapter->physicalDevice, &deviceProperties2);
+    return WGPUStatus_Success;
 }
 
 static RenderPassLayout GetRenderPassLayout2(const RenderPassCommandBegin* rpdesc){
@@ -3331,7 +3348,12 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
     else{
         correctedHeight = config->height;
     }
-    createInfo.minImageCount = SWAPCHAIN_ICLAMP_TEMP(vkCapabilities.minImageCount + 1, vkCapabilities.minImageCount, vkCapabilities.maxImageCount);
+    if(vkCapabilities.maxImageCount == 0){
+        createInfo.minImageCount = vkCapabilities.minImageCount + 1;
+    }
+    else{
+        createInfo.minImageCount = SWAPCHAIN_ICLAMP_TEMP(vkCapabilities.minImageCount + 1, vkCapabilities.minImageCount, vkCapabilities.maxImageCount);
+    }
     #undef SWAPCHAIN_ICLAMP_TEMP
     
     
@@ -5252,7 +5274,7 @@ WGPUGlobalReflectionInfo* getGlobalRI(SpvReflectShaderModule mod, uint32_t* coun
             insert.bindGroup = set->set; // Use the actual set number from reflection
             insert.binding = entry->binding;
             
-            const char* entry_name_ptr = entry->type_description->type_name ? entry->type_description->type_name : (entry->name ? entry->name : "");
+            const char* entry_name_ptr = entry->name ? entry->name : (entry->type_description->type_name ? entry->type_description->type_name : "");
             insert.name.data = entry_name_ptr;
             insert.name.length = strlen(entry_name_ptr);
             // insert.stageFlags = entry->shader_stage_flags; // If WGPUGlobalReflectionInfo has stage flags
