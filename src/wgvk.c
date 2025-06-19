@@ -4756,7 +4756,7 @@ typedef struct OptionalBarrier{
 static OptionalBarrier ru_trackTextureAndEmit(ResourceUsage* resourceUsage, WGPUTexture texture, ImageUsageSnap usage){
     ImageUsageRecord* alreadyThere = ImageUsageRecordMap_get(&resourceUsage->referencedTextures, texture);
     if(alreadyThere){
-        VkImageMemoryBarrier barr = {
+        const VkImageMemoryBarrier barr = {
             VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             NULL,
             alreadyThere->lastAccess,
@@ -4768,7 +4768,10 @@ static OptionalBarrier ru_trackTextureAndEmit(ResourceUsage* resourceUsage, WGPU
             texture->image,
             usage.subresource
         };
-        OptionalBarrier ret = {
+        alreadyThere->lastStage  = usage.stage;
+        alreadyThere->lastAccess = usage.access;
+        alreadyThere->lastLayout = usage.layout;
+        const OptionalBarrier ret = {
             .srcStage = alreadyThere->lastStage,
             .dstStage = usage.stage,
             .type = bt_image_barrier,
@@ -4777,7 +4780,7 @@ static OptionalBarrier ru_trackTextureAndEmit(ResourceUsage* resourceUsage, WGPU
         return ret;
     }
     else{
-        ImageUsageRecord record = {
+        const ImageUsageRecord record = {
             .initialAccess = usage.access,
             .initialStage = usage.stage,
             .initialLayout = usage.layout,
@@ -4803,7 +4806,7 @@ static OptionalBarrier ru_trackTextureViewAndEmit(ResourceUsage* resourceUsage, 
     
     ImageUsageRecord* alreadyThere = ImageUsageRecordMap_get(&resourceUsage->referencedTextures, view->texture);
     if(alreadyThere){
-        VkImageMemoryBarrier barr = {
+        const VkImageMemoryBarrier barr = {
             VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             NULL,
             alreadyThere->lastAccess,
@@ -4815,7 +4818,10 @@ static OptionalBarrier ru_trackTextureViewAndEmit(ResourceUsage* resourceUsage, 
             view->texture->image,
             view->subresourceRange
         };
-        OptionalBarrier ret = {
+        alreadyThere->lastStage  = usage.stage;
+        alreadyThere->lastAccess = usage.access;
+        alreadyThere->lastLayout = usage.layout;
+        const OptionalBarrier ret = {
             .srcStage = alreadyThere->lastStage,
             .dstStage = usage.stage,
             .type = bt_image_barrier,
@@ -4824,7 +4830,7 @@ static OptionalBarrier ru_trackTextureViewAndEmit(ResourceUsage* resourceUsage, 
         return ret;
     }
     else{
-        ImageUsageRecord record = {
+        const ImageUsageRecord record = {
             .initialAccess = usage.access,
             .initialStage = usage.stage,
             .initialLayout = usage.layout,
@@ -4843,6 +4849,94 @@ static OptionalBarrier ru_trackTextureViewAndEmit(ResourceUsage* resourceUsage, 
             .type = bt_no_barrier
         };
     }
+}
+static OptionalBarrier ru_trackBufferAndEmit(ResourceUsage* resourceUsage, WGPUBuffer buffer, BufferUsageSnap usage){
+    BufferUsageRecord* rec = BufferUsageRecordMap_get(&resourceUsage->referencedBuffers, buffer);
+    if(rec != NULL){
+        const VkBufferMemoryBarrier bufferBarrier = {
+            VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            NULL,
+            rec->lastAccess,
+            usage.access, 
+            buffer->device->adapter->queueIndices.graphicsIndex,
+            buffer->device->adapter->queueIndices.graphicsIndex,
+            buffer->buffer,
+            0,
+            VK_WHOLE_SIZE
+        };
+
+        rec->lastAccess = usage.access;
+        rec->lastStage = usage.stage;
+        rec->everWrittenTo |= isWritingAccess(usage.access);
+        const OptionalBarrier ret = {
+            .type = bt_buffer_barrier,
+            .bufferBarrier = bufferBarrier,
+            .srcStage = rec->lastAccess,
+            .dstStage = usage.stage,
+        };
+        return ret;
+    }
+    else{
+        const BufferUsageRecord record = {
+            .initialStage = usage.stage,
+            .initialAccess = usage.access,
+            .lastStage = usage.stage,
+            .lastAccess = usage.access,
+            .everWrittenTo = isWritingAccess(usage.access)
+        };
+        ru_trackBuffer(resourceUsage, buffer, record);
+        return (OptionalBarrier){bt_no_barrier};
+    }
+}
+static void encoderOptionalBarrier(WGPUCommandEncoder encoder, OptionalBarrier barrier){
+    WGPUDevice device = encoder->device;
+    struct VolkDeviceTable* functions = &encoder->device->functions;
+    uint32_t bufferBarriers = 0;
+    uint32_t memoryBarriers = 0;
+    uint32_t imageBarriers  = 0;
+    VkBufferMemoryBarrier* bufferBarrier = NULL;
+    VkMemoryBarrier*       memoryBarrier = NULL;
+    VkImageMemoryBarrier*  imageBarrier  = NULL;
+    switch(barrier.type){
+        case bt_buffer_barrier:{
+            bufferBarrier = &barrier.bufferBarrier;
+            ++bufferBarriers;
+        }break;
+        case bt_image_barrier:{
+            imageBarrier = &barrier.imageBarrier;
+            ++imageBarriers;
+        }break;
+        case bt_memory_barrier:{
+            memoryBarrier = &barrier.memoryBarrier;
+            ++memoryBarriers;
+        }break;
+
+
+        default:break;
+    }
+    functions->vkCmdPipelineBarrier(
+        encoder->buffer,
+        barrier.srcStage,
+        barrier.dstStage,
+        0,
+        memoryBarriers, memoryBarrier,
+        bufferBarriers, bufferBarrier,
+        imageBarriers,  imageBarrier
+    );
+}
+static void ru_trackAndEncodeTexture(WGPUCommandEncoder encoder, ResourceUsage* resourceUsage, WGPUTexture texture, ImageUsageSnap usage){
+    OptionalBarrier barrier = ru_trackTextureAndEmit(resourceUsage, texture, usage);
+    encoderOptionalBarrier(encoder, barrier);
+}
+
+static void ru_trackAndEncodeTextureView(WGPUCommandEncoder encoder, ResourceUsage* resourceUsage, WGPUTextureView view, ImageUsageSnap usage){
+    OptionalBarrier barrier = ru_trackTextureViewAndEmit(resourceUsage, view, usage);
+    encoderOptionalBarrier(encoder, barrier);
+}
+
+static void ru_trackAndEncodeBuffer(WGPUCommandEncoder encoder, ResourceUsage* resourceUsage, WGPUBuffer buffer, BufferUsageSnap usage){
+    OptionalBarrier barrier = ru_trackBufferAndEmit(resourceUsage, buffer, usage);
+    encoderOptionalBarrier(encoder, barrier);
 }
 
 RGAPI void ce_trackTexture(WGPUCommandEncoder encoder, WGPUTexture texture, ImageUsageSnap usage){
