@@ -5640,12 +5640,108 @@ WGPUFuture wgpuShaderModuleGetReflectionInfo(WGPUShaderModule shaderModule, WGPU
 void wgpuAdapterInfoFreeMembers(WGPUAdapterInfo value) {}
 WGPUStatus wgpuGetInstanceCapabilities(WGPUInstanceCapabilities * capabilities) { return WGPUStatus_Error; }
 WGPUProc wgpuGetProcAddress(WGPUStringView procName) { return NULL; }
-void wgpuSupportedFeaturesFreeMembers(WGPUSupportedFeatures value) {}
+void wgpuSupportedFeaturesFreeMembers(WGPUSupportedFeatures value) {
+    if(value.features){
+        RL_FREE((void*)value.features);
+    }
+}
 void wgpuSupportedWGSLLanguageFeaturesFreeMembers(WGPUSupportedWGSLLanguageFeatures value) {}
 void wgpuSurfaceCapabilitiesFreeMembers(WGPUSurfaceCapabilities value) {}
 
 // Stubs for missing Methods of Adapter
-void wgpuAdapterGetFeatures(WGPUAdapter adapter, WGPUSupportedFeatures * features) {}
+void wgpuAdapterGetFeatures(WGPUAdapter adapter, WGPUSupportedFeatures* features) {
+    if (!adapter || !features) {
+        if (features) {
+            features->featureCount = 0;
+            // As per the API contract for output arrays, we do not modify features->features on invalid input.
+        }
+        return;
+    }
+
+    // Query all necessary Vulkan features using a pNext chain.
+    // This is more efficient than separate calls.
+    VkPhysicalDeviceFeatures2 features2 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    VkPhysicalDeviceVulkan12Features features12 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    features2.pNext = &features12;
+    vkGetPhysicalDeviceFeatures2(adapter->physicalDevice, &features2);
+
+    // Query subgroup properties separately as they are in VkPhysicalDeviceProperties.
+    VkPhysicalDeviceSubgroupProperties subgroupProperties = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
+    VkPhysicalDeviceProperties2 properties2 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+    properties2.pNext = &subgroupProperties;
+    vkGetPhysicalDeviceProperties2(adapter->physicalDevice, &properties2);
+
+    WGPUFeatureName supported_features[64] = {0};
+    size_t count = 0;
+
+    // --- Map Vulkan capabilities to WGPU features ---
+
+    if (features2.features.depthClamp) {
+        supported_features[count++] = WGPUFeatureName_DepthClipControl;
+    }
+    //if (features2.features) {
+        // A full implementation would also check that queueFamilyProperties.timestampValidBits > 0
+        // for at least one queue family, which is typically done during adapter enumeration.
+        //supported_features[count++] = WGPUFeatureName_TimestampQuery;
+    //}
+    if (features2.features.textureCompressionBC) {
+        supported_features[count++] = WGPUFeatureName_TextureCompressionBC;
+    }
+    if (features2.features.textureCompressionETC2) {
+        supported_features[count++] = WGPUFeatureName_TextureCompressionETC2;
+    }
+    if (features2.features.textureCompressionASTC_LDR) {
+        supported_features[count++] = WGPUFeatureName_TextureCompressionASTC;
+    }
+    if (features2.features.drawIndirectFirstInstance) {
+        supported_features[count++] = WGPUFeatureName_IndirectFirstInstance;
+    }
+    if (features12.shaderFloat16) {
+        supported_features[count++] = WGPUFeatureName_ShaderF16;
+    }
+    if (features2.features.shaderClipDistance) {
+        supported_features[count++] = WGPUFeatureName_ClipDistances;
+    }
+    if (features2.features.dualSrcBlend) {
+        supported_features[count++] = WGPUFeatureName_DualSourceBlending;
+    }
+
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(adapter->physicalDevice, VK_FORMAT_D32_SFLOAT_S8_UINT, &props);
+    if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+        supported_features[count++] = WGPUFeatureName_Depth32FloatStencil8;
+    }
+    
+    vkGetPhysicalDeviceFormatProperties(adapter->physicalDevice, VK_FORMAT_B10G11R11_UFLOAT_PACK32, &props);
+    if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) {
+        supported_features[count++] = WGPUFeatureName_RG11B10UfloatRenderable;
+    }
+
+    vkGetPhysicalDeviceFormatProperties(adapter->physicalDevice, VK_FORMAT_B8G8R8A8_UNORM, &props);
+    if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) {
+        supported_features[count++] = WGPUFeatureName_BGRA8UnormStorage;
+    }
+
+    vkGetPhysicalDeviceFormatProperties(adapter->physicalDevice, VK_FORMAT_R32_SFLOAT, &props);
+    if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) {
+        supported_features[count++] = WGPUFeatureName_Float32Filterable;
+    }
+    
+    vkGetPhysicalDeviceFormatProperties(adapter->physicalDevice, VK_FORMAT_R32G32B32A32_SFLOAT, &props);
+    if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) {
+        supported_features[count++] = WGPUFeatureName_Float32Blendable;
+    }
+
+    // Check subgroup support
+    if ((subgroupProperties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) &&
+        (subgroupProperties.supportedOperations & VK_SUBGROUP_FEATURE_BASIC_BIT)) {
+        supported_features[count++] = WGPUFeatureName_Subgroups;
+    }
+    supported_features[count++] = WGPUFeatureName_CoreFeaturesAndLimits;
+    features->featureCount = count;
+    features->features = RL_CALLOC(count, sizeof(WGPUFeatureName));
+    memcpy((void*)features->features, supported_features, count * sizeof(WGPUFeatureName));
+}
 WGPUStatus wgpuAdapterGetInfo(WGPUAdapter adapter, WGPUAdapterInfo * info) { return WGPUStatus_Error; }
 WGPUBool wgpuAdapterHasFeature(WGPUAdapter adapter, WGPUFeatureName feature) { return 0; }
 
@@ -5694,11 +5790,20 @@ void wgpuComputePipelineSetLabel(WGPUComputePipeline computePipeline, WGPUString
 // Stubs for missing Methods of Device
 WGPUFuture wgpuDeviceCreateComputePipelineAsync(WGPUDevice device, WGPUComputePipelineDescriptor const * descriptor, WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
 WGPUQuerySet wgpuDeviceCreateQuerySet(WGPUDevice device, const WGPUQuerySetDescriptor* descriptor) {
+    WGPUQuerySet ret = RL_CALLOC(1, sizeof(WGPUQuerySetImpl));
+    ret->device = device;
+    struct VolkDeviceTable* functions = &device->functions;
     VkQueryPoolCreateInfo qpci = {
         .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
         .queryType = toVulkanQueryType(descriptor->type),
+        .queryCount = descriptor->count,
     };
-    return NULL; 
+    VkResult qcr = functions->vkCreateQueryPool(device->device, &qpci, NULL, &ret->queryPool);
+    if(qcr != VK_SUCCESS){
+        RL_FREE(ret);
+        return NULL;
+    }
+    return ret; 
 }
 WGPUFuture wgpuDeviceCreateRenderPipelineAsync(WGPUDevice device, WGPURenderPipelineDescriptor const * descriptor, WGPUCreateRenderPipelineAsyncCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
 void wgpuDeviceDestroy(WGPUDevice device) {}

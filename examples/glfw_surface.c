@@ -166,7 +166,7 @@ int main(){
     glfwInit();
     
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(800, 600, "WGVK Window", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "GLFW Window", NULL, NULL);
     glfwSetKeyCallback(window, keyfunc);
     #ifdef _WIN32
     WGPUSurfaceSourceWindowsHWND surfaceChainObj = {
