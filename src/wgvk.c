@@ -2508,6 +2508,15 @@ WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, 
     if(rpdesc->depthStencilAttachment){
         ret->beginInfo.depthStencilAttachment = *rpdesc->depthStencilAttachment;
     }
+    if(rpdesc->occlusionQuerySet){
+        wgpuQuerySetAddRef(rpdesc->occlusionQuerySet);
+        ret->beginInfo.occlusionQuerySet = rpdesc->occlusionQuerySet;
+    }
+    if(rpdesc->timestampWrites){
+        ret->beginInfo.timestampWrites = *rpdesc->timestampWrites;
+        ret->beginInfo.timestampWritesPresent = 1;
+        wgpuQuerySetAddRef(ret->beginInfo.timestampWrites.querySet);
+    }
     RenderPassCommandGenericVector_init(&ret->bufferedCommands);
 
     const ImageUsageSnap iur_color = {
@@ -2767,7 +2776,12 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
         device->functions.vkCmdSetScissor (destination, i, 1, &scissor);
     }
     recordVkCommands(destination, renderPassEncoder->device, &renderPassEncoder->bufferedCommands, beginInfo);
-
+    if(beginInfo->occlusionQuerySet){
+        wgpuQuerySetRelease(beginInfo->occlusionQuerySet);
+    }
+    if(beginInfo->timestampWritesPresent){
+        wgpuQuerySetRelease(beginInfo->timestampWrites.querySet);
+    }
     #if VULKAN_USE_DYNAMIC_RENDERING == 1
     device->functions.vkCmdEndRendering(destination);
     #else
@@ -3041,7 +3055,24 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
             );
         }
         break;
-        
+        case cp_command_type_dispatch_workgroups_indirect:{
+        }break;
+        case rp_command_type_begin_occlusion_query:{
+
+        }break;
+        case rp_command_type_end_occlusion_query:{
+
+        }break;
+        case rp_command_type_insert_debug_marker:{
+
+        }break;
+        case rp_command_type_multi_draw_indexed_indirect:{
+
+        }break;
+        case rp_command_type_multi_draw_indirect:{
+
+        }break;
+    
         case rp_command_type_set_force32: // fallthrough
         case rp_command_type_enum_count:  // fallthrough
         case rp_command_type_invalid: wgvk_assert(false, "Invalid command type"); rg_unreachable();
@@ -5776,7 +5807,9 @@ void wgpuCommandEncoderWriteTimestamp(WGPUCommandEncoder commandEncoder, WGPUQue
 void wgpuCommandEncoderAddRef(WGPUCommandEncoder commandEncoder) {}
 
 // Stubs for missing Methods of ComputePassEncoder
-void wgpuComputePassEncoderDispatchWorkgroupsIndirect(WGPUComputePassEncoder computePassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) {}
+void wgpuComputePassEncoderDispatchWorkgroupsIndirect(WGPUComputePassEncoder computePassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) {
+    
+}
 void wgpuComputePassEncoderInsertDebugMarker(WGPUComputePassEncoder computePassEncoder, WGPUStringView markerLabel) {}
 void wgpuComputePassEncoderPopDebugGroup(WGPUComputePassEncoder computePassEncoder) {}
 void wgpuComputePassEncoderPushDebugGroup(WGPUComputePassEncoder computePassEncoder, WGPUStringView groupLabel) {}
@@ -5847,18 +5880,96 @@ void wgpuRenderBundleEncoderPushDebugGroup(WGPURenderBundleEncoder renderBundleE
 void wgpuRenderBundleEncoderSetLabel(WGPURenderBundleEncoder renderBundleEncoder, WGPUStringView label) {}
 
 // Stubs for missing Methods of RenderPassEncoder
-void wgpuRenderPassEncoderBeginOcclusionQuery(WGPURenderPassEncoder renderPassEncoder, uint32_t queryIndex) {}
-void wgpuRenderPassEncoderEndOcclusionQuery(WGPURenderPassEncoder renderPassEncoder) {}
-void wgpuRenderPassEncoderInsertDebugMarker(WGPURenderPassEncoder renderPassEncoder, WGPUStringView markerLabel) {}
-void wgpuRenderPassEncoderMultiDrawIndexedIndirect(WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset, uint32_t maxDrawCount, WGPU_NULLABLE WGPUBuffer drawCountBuffer, uint64_t drawCountBufferOffset) {}
-void wgpuRenderPassEncoderMultiDrawIndirect(WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset, uint32_t maxDrawCount, WGPU_NULLABLE WGPUBuffer drawCountBuffer, uint64_t drawCountBufferOffset) {}
-void wgpuRenderPassEncoderPopDebugGroup(WGPURenderPassEncoder renderPassEncoder) {}
-void wgpuRenderPassEncoderPushDebugGroup(WGPURenderPassEncoder renderPassEncoder, WGPUStringView groupLabel) {}
-void wgpuRenderPassEncoderSetLabel(WGPURenderPassEncoder renderPassEncoder, WGPUStringView label) {}
-void wgpuRenderPassEncoderSetStencilReference(WGPURenderPassEncoder renderPassEncoder, uint32_t reference) {}
+void wgpuRenderPassEncoderBeginOcclusionQuery(WGPURenderPassEncoder renderPassEncoder, uint32_t queryIndex) {
+    RenderPassCommandGeneric insert = {
+        .type = rp_command_type_begin_occlusion_query,
+        .beginOcclusionQuery = {
+            .queryIndex = queryIndex
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
+}
+void wgpuRenderPassEncoderEndOcclusionQuery(WGPURenderPassEncoder renderPassEncoder) {
+    RenderPassCommandGeneric insert = {
+        .type = rp_command_type_end_occlusion_query
+    };
+    RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
+}
 
+static inline size_t WGPUStringView_length(WGPUStringView view){
+    return (view.length == WGPU_STRLEN) ? strlen(view.data) : view.length; 
+}
+
+void wgpuRenderPassEncoderInsertDebugMarker(WGPURenderPassEncoder renderPassEncoder, WGPUStringView markerLabel) {
+    
+    size_t length = WGPUStringView_length(markerLabel);
+    wgvk_assert(length <= 30, "Debug marker labels can't be longer than 30 chars");
+
+    RenderPassCommandGeneric insert = {
+        .type = rp_command_type_insert_debug_marker
+    };
+    memcpy(insert.insertDebugMarker.text, markerLabel.data, length);
+    insert.insertDebugMarker.length = length;
+    RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
+}
+
+void wgpuRenderPassEncoderMultiDrawIndexedIndirect(WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset, uint32_t maxDrawCount, WGPU_NULLABLE WGPUBuffer drawCountBuffer, uint64_t drawCountBufferOffset) {
+    RenderPassCommandGeneric insert = {
+        .type = rp_command_type_multi_draw_indexed_indirect,
+        .multiDrawIndexedIndirect = {
+            .indirectBuffer = indirectBuffer,
+            .indirectOffset = indirectOffset,
+            .maxDrawCount = maxDrawCount,
+            .drawCountBuffer = drawCountBuffer,
+            .drawCountBufferOffset = drawCountBufferOffset
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
+}
+
+void wgpuRenderPassEncoderMultiDrawIndirect(WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset, uint32_t maxDrawCount, WGPU_NULLABLE WGPUBuffer drawCountBuffer, uint64_t drawCountBufferOffset) {
+    // Assumes RenderPassCommandMultiDrawIndirect has fields for all parameters.
+    RenderPassCommandGeneric insert = {
+        .type = rp_command_type_multi_draw_indirect,
+        .multiDrawIndirect = {
+            .indirectBuffer = indirectBuffer,
+            .indirectOffset = indirectOffset,
+            .maxDrawCount = maxDrawCount,
+            .drawCountBuffer = drawCountBuffer,
+            .drawCountBufferOffset = drawCountBufferOffset
+        }
+    };
+    RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
+}
+
+void wgpuRenderPassEncoderPopDebugGroup(WGPURenderPassEncoder renderPassEncoder) {
+    // Implemented as a no-op.
+    (void)renderPassEncoder;
+}
+
+void wgpuRenderPassEncoderPushDebugGroup(WGPURenderPassEncoder renderPassEncoder, WGPUStringView groupLabel) {
+    // Implemented as a no-op.
+    (void)renderPassEncoder;
+    (void)groupLabel;
+}
+
+void wgpuRenderPassEncoderSetLabel(WGPURenderPassEncoder renderPassEncoder, WGPUStringView label) {
+    // This typically sets a debug label on the encoder object itself and is not a recorded command.
+    // The WGPURenderPassEncoder struct definition is not provided, so this is a no-op.
+    // An actual implementation might be: `renderPassEncoder->label = strdup(label);`
+    (void)renderPassEncoder;
+    (void)label;
+}
+
+void wgpuRenderPassEncoderSetStencilReference(WGPURenderPassEncoder renderPassEncoder, uint32_t reference) {
+    // This sets state on the encoder for subsequent draws. It is not a recorded command.
+    // Assumes the WGPURenderPassEncoder struct has a 'stencilReference' member.
+    //renderPassEncoder->stencilReference = reference;
+}
 // Stubs for missing Methods of RenderPipeline
-WGPUBindGroupLayout wgpuRenderPipelineGetBindGroupLayout(WGPURenderPipeline renderPipeline, uint32_t groupIndex) { return NULL; }
+WGPUBindGroupLayout wgpuRenderPipelineGetBindGroupLayout(WGPURenderPipeline renderPipeline, uint32_t groupIndex) {
+    return renderPipeline->layout->bindGroupLayouts[groupIndex];
+}
 void wgpuRenderPipelineSetLabel(WGPURenderPipeline renderPipeline, WGPUStringView label) {}
 
 // Stubs for missing Methods of Sampler

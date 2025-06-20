@@ -929,6 +929,12 @@ typedef enum RCPassCommandType{
     rp_command_type_execute_renderbundles,
     cp_command_type_set_compute_pipeline,
     cp_command_type_dispatch_workgroups,
+    cp_command_type_dispatch_workgroups_indirect,
+    rp_command_type_begin_occlusion_query,
+    rp_command_type_end_occlusion_query,
+    rp_command_type_insert_debug_marker,
+    rp_command_type_multi_draw_indexed_indirect,
+    rp_command_type_multi_draw_indirect,
     rp_command_type_enum_count,
     rp_command_type_set_force32 = 0x7fffffff
 }RCPassCommandType;
@@ -985,6 +991,10 @@ typedef struct ComputePassCommandDispatchWorkgroups {
     uint32_t x, y, z;
 } ComputePassCommandDispatchWorkgroups;
 
+typedef struct ComputePassCommandDispatchWorkgroupsIndirect {
+    WGPUBuffer dispatchBuffer;
+}ComputePassCommandDispatchWorkgroupsIndirect;
+
 typedef struct RenderPassCommandSetViewport{
     float x;
     float y;
@@ -1016,12 +1026,44 @@ typedef struct RenderPassCommandSetBlendConstant{
 }RenderPassCommandSetBlendConstant;
 
 
+typedef struct RenderPassCommandMultiDrawIndexedIndirect {
+    WGPUBuffer indirectBuffer;
+    uint64_t indirectOffset;
+    uint32_t maxDrawCount;
+    WGPUBuffer drawCountBuffer;
+    uint64_t drawCountBufferOffset;
+} RenderPassCommandMultiDrawIndexedIndirect;
+
+typedef struct RenderPassCommandBeginOcclusionQuery {
+    uint32_t queryIndex;
+} RenderPassCommandBeginOcclusionQuery;
+
+typedef struct RenderPassCommandEndOcclusionQuery {
+    // This command takes no arguments.
+} RenderPassCommandEndOcclusionQuery;
+
+typedef struct RenderPassCommandInsertDebugMarker {
+    uint8_t length;
+    char text[31];
+} RenderPassCommandInsertDebugMarker;
+
+typedef struct RenderPassCommandMultiDrawIndirect {
+    WGPUBuffer indirectBuffer;
+    uint64_t indirectOffset;
+    uint32_t maxDrawCount;
+    WGPUBuffer drawCountBuffer;
+    uint64_t drawCountBufferOffset;
+} RenderPassCommandMultiDrawIndirect;
+
 typedef struct RenderPassCommandBegin{
     WGPUStringView label;
     size_t colorAttachmentCount;
     WGPURenderPassColorAttachment colorAttachments[MAX_COLOR_ATTACHMENTS];
-    Bool32 depthAttachmentPresent;
+    WGPUBool depthAttachmentPresent;
     WGPURenderPassDepthStencilAttachment depthStencilAttachment;
+    WGPUQuerySet occlusionQuerySet;
+    WGPUBool timestampWritesPresent;
+    WGPUPassTimestampWrites timestampWrites;
 }RenderPassCommandBegin;
 
 typedef struct RenderPassCommandGeneric {
@@ -1039,6 +1081,11 @@ typedef struct RenderPassCommandGeneric {
         RenderPassCommandSetBindGroup setBindGroup;
         RenderPassCommandSetPipeline setRenderPipeline;
         RenderPassCommandExecuteRenderbundles executeRenderBundles;
+        RenderPassCommandMultiDrawIndexedIndirect multiDrawIndexedIndirect;
+        RenderPassCommandBeginOcclusionQuery beginOcclusionQuery;
+        RenderPassCommandEndOcclusionQuery endOcclusionQuery;
+        RenderPassCommandInsertDebugMarker insertDebugMarker;
+        RenderPassCommandMultiDrawIndirect multiDrawIndirect;
         ComputePassCommandSetPipeline setComputePipeline;
         ComputePassCommandDispatchWorkgroups dispatchWorkgroups;
     };
