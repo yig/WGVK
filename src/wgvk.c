@@ -5637,13 +5637,149 @@ WGPUFuture wgpuShaderModuleGetReflectionInfo(WGPUShaderModule shaderModule, WGPU
     return rete;
 }
 
+void wgpuAdapterInfoFreeMembers(WGPUAdapterInfo value) {}
+WGPUStatus wgpuGetInstanceCapabilities(WGPUInstanceCapabilities * capabilities) { return WGPUStatus_Error; }
+WGPUProc wgpuGetProcAddress(WGPUStringView procName) { return NULL; }
+void wgpuSupportedFeaturesFreeMembers(WGPUSupportedFeatures value) {}
+void wgpuSupportedWGSLLanguageFeaturesFreeMembers(WGPUSupportedWGSLLanguageFeatures value) {}
+void wgpuSurfaceCapabilitiesFreeMembers(WGPUSurfaceCapabilities value) {}
+
+// Stubs for missing Methods of Adapter
+void wgpuAdapterGetFeatures(WGPUAdapter adapter, WGPUSupportedFeatures * features) {}
+WGPUStatus wgpuAdapterGetInfo(WGPUAdapter adapter, WGPUAdapterInfo * info) { return WGPUStatus_Error; }
+WGPUBool wgpuAdapterHasFeature(WGPUAdapter adapter, WGPUFeatureName feature) { return 0; }
+
+// Stubs for missing Methods of BindGroup
+void wgpuBindGroupSetLabel(WGPUBindGroup bindGroup, WGPUStringView label) {}
+
+// Stubs for missing Methods of BindGroupLayout
+void wgpuBindGroupLayoutSetLabel(WGPUBindGroupLayout bindGroupLayout, WGPUStringView label) {}
+
+// Stubs for missing Methods of Buffer
+void wgpuBufferDestroy(WGPUBuffer buffer) {}
+void const * wgpuBufferGetConstMappedRange(WGPUBuffer buffer, size_t offset, size_t size) { return NULL; }
+void * wgpuBufferGetMappedRange(WGPUBuffer buffer, size_t offset, size_t size) { return NULL; }
+WGPUBufferMapState wgpuBufferGetMapState(WGPUBuffer buffer) { return WGPUBufferMapState_Unmapped; }
+WGPUBufferUsage wgpuBufferGetUsage(WGPUBuffer buffer) { return WGPUBufferUsage_None; }
+WGPUStatus wgpuBufferReadMappedRange(WGPUBuffer buffer, size_t offset, void * data, size_t size) { return WGPUStatus_Error; }
+void wgpuBufferSetLabel(WGPUBuffer buffer, WGPUStringView label) {}
+WGPUStatus wgpuBufferWriteMappedRange(WGPUBuffer buffer, size_t offset, const void* data, size_t size) { return WGPUStatus_Error; }
+
+// Stubs for missing Methods of CommandBuffer
+void wgpuCommandBufferSetLabel(WGPUCommandBuffer commandBuffer, WGPUStringView label) {}
+void wgpuCommandBufferAddRef(WGPUCommandBuffer commandBuffer) {}
+
+// Stubs for missing Methods of CommandEncoder
+void wgpuCommandEncoderClearBuffer(WGPUCommandEncoder commandEncoder, WGPUBuffer buffer, uint64_t offset, uint64_t size) {}
+void wgpuCommandEncoderInsertDebugMarker(WGPUCommandEncoder commandEncoder, WGPUStringView markerLabel) {}
+void wgpuCommandEncoderPopDebugGroup(WGPUCommandEncoder commandEncoder) {}
+void wgpuCommandEncoderPushDebugGroup(WGPUCommandEncoder commandEncoder, WGPUStringView groupLabel) {}
+void wgpuCommandEncoderResolveQuerySet(WGPUCommandEncoder commandEncoder, WGPUQuerySet querySet, uint32_t firstQuery, uint32_t queryCount, WGPUBuffer destination, uint64_t destinationOffset) {}
+void wgpuCommandEncoderSetLabel(WGPUCommandEncoder commandEncoder, WGPUStringView label) {}
+void wgpuCommandEncoderWriteTimestamp(WGPUCommandEncoder commandEncoder, WGPUQuerySet querySet, uint32_t queryIndex) {}
+void wgpuCommandEncoderAddRef(WGPUCommandEncoder commandEncoder) {}
+
+// Stubs for missing Methods of ComputePassEncoder
+void wgpuComputePassEncoderDispatchWorkgroupsIndirect(WGPUComputePassEncoder computePassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) {}
+void wgpuComputePassEncoderInsertDebugMarker(WGPUComputePassEncoder computePassEncoder, WGPUStringView markerLabel) {}
+void wgpuComputePassEncoderPopDebugGroup(WGPUComputePassEncoder computePassEncoder) {}
+void wgpuComputePassEncoderPushDebugGroup(WGPUComputePassEncoder computePassEncoder, WGPUStringView groupLabel) {}
+void wgpuComputePassEncoderSetLabel(WGPUComputePassEncoder computePassEncoder, WGPUStringView label) {}
+void wgpuComputePassEncoderAddRef(WGPUComputePassEncoder computePassEncoder) {}
+
+// Stubs for missing Methods of ComputePipeline
+WGPUBindGroupLayout wgpuComputePipelineGetBindGroupLayout(WGPUComputePipeline computePipeline, uint32_t groupIndex) { return NULL; }
+void wgpuComputePipelineSetLabel(WGPUComputePipeline computePipeline, WGPUStringView label) {}
+
+// Stubs for missing Methods of Device
+WGPUFuture wgpuDeviceCreateComputePipelineAsync(WGPUDevice device, WGPUComputePipelineDescriptor const * descriptor, WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
+WGPUQuerySet wgpuDeviceCreateQuerySet(WGPUDevice device, const WGPUQuerySetDescriptor* descriptor) {
+    VkQueryPoolCreateInfo qpci = {
+        .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+        .queryType = toVulkanQueryType(descriptor->type),
+    };
+    return NULL; 
+}
+WGPUFuture wgpuDeviceCreateRenderPipelineAsync(WGPUDevice device, WGPURenderPipelineDescriptor const * descriptor, WGPUCreateRenderPipelineAsyncCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
+void wgpuDeviceDestroy(WGPUDevice device) {}
+void wgpuDeviceGetFeatures(WGPUDevice device, WGPUSupportedFeatures * features) {}
+WGPUStatus wgpuDeviceGetLimits(WGPUDevice device, WGPULimits * limits) { return WGPUStatus_Error; }
+WGPUFuture wgpuDeviceGetLostFuture(WGPUDevice device) { return (WGPUFuture){0}; }
+WGPUBool wgpuDeviceHasFeature(WGPUDevice device, WGPUFeatureName feature) { return 0; }
+WGPUFuture wgpuDevicePopErrorScope(WGPUDevice device, WGPUPopErrorScopeCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
+void wgpuDevicePushErrorScope(WGPUDevice device, WGPUErrorFilter filter) {}
+void wgpuDeviceSetLabel(WGPUDevice device, WGPUStringView label) {}
+
+// Stubs for missing Methods of Instance
+WGPUStatus wgpuInstanceGetWGSLLanguageFeatures(WGPUInstance instance, WGPUSupportedWGSLLanguageFeatures * features) { return WGPUStatus_Error; }
+WGPUBool wgpuInstanceHasWGSLLanguageFeature(WGPUInstance instance, WGPUWGSLLanguageFeatureName feature) { return 0; }
+void wgpuInstanceProcessEvents(WGPUInstance instance) {}
+
+// Stubs for missing Methods of PipelineLayout
+void wgpuPipelineLayoutSetLabel(WGPUPipelineLayout pipelineLayout, WGPUStringView label) {}
+
+// Stubs for missing Methods of QuerySet
+void wgpuQuerySetDestroy(WGPUQuerySet querySet) {}
+uint32_t wgpuQuerySetGetCount(WGPUQuerySet querySet) { return 0; }
+WGPUQueryType wgpuQuerySetGetType(WGPUQuerySet querySet) { return (WGPUQueryType)0; }
+void wgpuQuerySetSetLabel(WGPUQuerySet querySet, WGPUStringView label) {}
+void wgpuQuerySetAddRef(WGPUQuerySet querySet) {}
+void wgpuQuerySetRelease(WGPUQuerySet querySet) {}
+
+// Stubs for missing Methods of Queue
+WGPUFuture wgpuQueueOnSubmittedWorkDone(WGPUQueue queue, WGPUQueueWorkDoneCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
+void wgpuQueueSetLabel(WGPUQueue queue, WGPUStringView label) {}
+
+// Stubs for missing Methods of RenderBundle
+void wgpuRenderBundleSetLabel(WGPURenderBundle renderBundle, WGPUStringView label) {}
+void wgpuRenderBundleAddRef(WGPURenderBundle renderBundle) {}
+void wgpuRenderBundleRelease(WGPURenderBundle renderBundle) {}
+
+// Stubs for missing Methods of RenderBundleEncoder
+void wgpuRenderBundleEncoderInsertDebugMarker(WGPURenderBundleEncoder renderBundleEncoder, WGPUStringView markerLabel) {}
+void wgpuRenderBundleEncoderPopDebugGroup(WGPURenderBundleEncoder renderBundleEncoder) {}
+void wgpuRenderBundleEncoderPushDebugGroup(WGPURenderBundleEncoder renderBundleEncoder, WGPUStringView groupLabel) {}
+void wgpuRenderBundleEncoderSetLabel(WGPURenderBundleEncoder renderBundleEncoder, WGPUStringView label) {}
+
+// Stubs for missing Methods of RenderPassEncoder
+void wgpuRenderPassEncoderBeginOcclusionQuery(WGPURenderPassEncoder renderPassEncoder, uint32_t queryIndex) {}
+void wgpuRenderPassEncoderEndOcclusionQuery(WGPURenderPassEncoder renderPassEncoder) {}
+void wgpuRenderPassEncoderInsertDebugMarker(WGPURenderPassEncoder renderPassEncoder, WGPUStringView markerLabel) {}
+void wgpuRenderPassEncoderMultiDrawIndexedIndirect(WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset, uint32_t maxDrawCount, WGPU_NULLABLE WGPUBuffer drawCountBuffer, uint64_t drawCountBufferOffset) {}
+void wgpuRenderPassEncoderMultiDrawIndirect(WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset, uint32_t maxDrawCount, WGPU_NULLABLE WGPUBuffer drawCountBuffer, uint64_t drawCountBufferOffset) {}
+void wgpuRenderPassEncoderPopDebugGroup(WGPURenderPassEncoder renderPassEncoder) {}
+void wgpuRenderPassEncoderPushDebugGroup(WGPURenderPassEncoder renderPassEncoder, WGPUStringView groupLabel) {}
+void wgpuRenderPassEncoderSetLabel(WGPURenderPassEncoder renderPassEncoder, WGPUStringView label) {}
+void wgpuRenderPassEncoderSetStencilReference(WGPURenderPassEncoder renderPassEncoder, uint32_t reference) {}
+
+// Stubs for missing Methods of RenderPipeline
+WGPUBindGroupLayout wgpuRenderPipelineGetBindGroupLayout(WGPURenderPipeline renderPipeline, uint32_t groupIndex) { return NULL; }
+void wgpuRenderPipelineSetLabel(WGPURenderPipeline renderPipeline, WGPUStringView label) {}
+
+// Stubs for missing Methods of Sampler
+void wgpuSamplerSetLabel(WGPUSampler sampler, WGPUStringView label) {}
+
+// Stubs for missing Methods of ShaderModule
+WGPUFuture wgpuShaderModuleGetCompilationInfo(WGPUShaderModule shaderModule, WGPUCompilationInfoCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
+void wgpuShaderModuleSetLabel(WGPUShaderModule shaderModule, WGPUStringView label) {}
+
+// Stubs for missing Methods of Surface
+void wgpuSurfaceSetLabel(WGPUSurface surface, WGPUStringView label) {}
+void wgpuSurfaceUnconfigure(WGPUSurface surface) {}
+void wgpuSurfaceAddRef(WGPUSurface surface) {}
+
+// Stubs for missing Methods of Texture
+void wgpuTextureDestroy(WGPUTexture texture) {}
+void wgpuTextureSetLabel(WGPUTexture texture, WGPUStringView label) {}
+
+// Stubs for missing Methods of TextureView
+void wgpuTextureViewSetLabel(WGPUTextureView textureView, WGPUStringView label) {}
+
+
 
 // =============================================================================
 // Allocator implementation
 // =============================================================================
-
-
-
 
 
 static void allocator_destroy(VirtualAllocator* allocator) {

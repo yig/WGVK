@@ -1878,9 +1878,15 @@ typedef struct WGPUQueueImpl{
 }WGPUQueueImpl;
 
 
+
 #ifndef WGPU_VALIDATION_ENABLED
 #define WGPU_VALIDATION_ENABLED 1
 #endif
+
+typedef struct WGPUQuerySetImpl{
+    VkQueryPool queryPool;
+    WGPUDevice device;
+}WGPUQuerySetImpl;
 
 
 
@@ -2109,7 +2115,13 @@ typedef struct WGPUQueueImpl{
 
 #endif // WGPU_VALIDATION_ENABLED
 
-
+VkQueryType toVulkanQueryType(WGPUQueryType type){
+    switch(type){
+        case WGPUQueryType_Occlusion:return VK_QUERY_TYPE_OCCLUSION;
+        case WGPUQueryType_Timestamp:return VK_QUERY_TYPE_TIMESTAMP;
+        default: return VK_QUERY_TYPE_MAX_ENUM;
+    }
+}
 static inline VkImageUsageFlags toVulkanTextureUsage(WGPUTextureUsage usage, WGPUTextureFormat format) {
     VkImageUsageFlags vkUsage = 0;
 
