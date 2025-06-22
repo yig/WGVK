@@ -44,15 +44,10 @@ function(wgvk_bundle_libraries output_target)
   endforeach()
 
   add_library(${output_target} STATIC ${all_objects})
-
   add_dependencies(${output_target} ${ARGN})
-
 endfunction()
 
 # Lock in static for now
-
-
-
 set(WGVK_CORE_SRC_LIST "src/wgvk.c")
 if(SANITIZE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined")
@@ -62,15 +57,18 @@ if(WGVK_USE_VMA)
 endif()
 
 
+# We define a variable to hold the name of the main library target.
+# This avoids repeating `if/else` logic for setting properties.
+set(WGVK_PRIMARY_TARGET_NAME "")
 
 if(WGVK_BUILD_WGSL_SUPPORT)
-    add_library(wgvk_core STATIC ${WGVK_CORE_SRC_LIST})
-    target_compile_definitions(wgvk_core PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
-    if(WGVK_USE_VMA)
-        target_compile_definitions(wgvk_core PUBLIC USE_VMA_ALLOCATOR=1)
-    endif()
+    set(WGVK_PRIMARY_TARGET_NAME "wgvk_core")
 
-    target_include_directories(wgvk_core PUBLIC include)
+    add_library(${WGVK_PRIMARY_TARGET_NAME} STATIC ${WGVK_CORE_SRC_LIST})
+    # Add all properties as PUBLIC. This means they are used to build wgvk_core itself,
+    # and they are part of its public interface to be inherited by consumers.
+    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
+    target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
 
     set(DAWN_ENABLE_DESKTOP_GL OFF)
     set(DAWN_ENABLE_OPENGLES OFF)
@@ -97,50 +95,62 @@ if(WGVK_BUILD_WGSL_SUPPORT)
     target_include_directories(tint_c_api PRIVATE "include")
     target_include_directories(tint_c_api PRIVATE "${dawn_SOURCE_DIR}")
     target_compile_features(tint_c_api PRIVATE cxx_std_20)
-    target_compile_definitions(wgvk_core PUBLIC SUPPORT_WGSL=1)
-    wgvk_bundle_libraries(wgvk wgvk_core tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api)
-    target_include_directories(wgvk PUBLIC include)
+    
+    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_WGSL=1)
+    
+    # Bundle wgvk_core and its dependencies into the final `wgvk` library.
+    wgvk_bundle_libraries(wgvk ${WGVK_PRIMARY_TARGET_NAME} tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api)
+
+    # ---- FIX: PROPAGATE USAGE REQUIREMENTS ----
+    # The `wgvk` library is made of object files, so it doesn't inherit CMake
+    # properties from `wgvk_core` automatically.
+    # We use `target_link_libraries` with `INTERFACE` to manually propagate all
+    # PUBLIC/INTERFACE properties (includes, definitions, etc.) from `wgvk_core`
+    # to `wgvk`. This makes them available to anything that links against `wgvk`.
+    target_link_libraries(wgvk INTERFACE ${WGVK_PRIMARY_TARGET_NAME})
+
 else()
-    add_library(wgvk STATIC ${WGVK_CORE_SRC_LIST})
-    target_compile_definitions(wgvk PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
-    if(WGVK_USE_VMA)
-        target_compile_definitions(wgvk PUBLIC USE_VMA_ALLOCATOR=1)
-    endif()
+    set(WGVK_PRIMARY_TARGET_NAME "wgvk")
 
-    target_include_directories(wgvk PUBLIC include)
-
+    add_library(${WGVK_PRIMARY_TARGET_NAME} STATIC ${WGVK_CORE_SRC_LIST})
+    # When not bundling, `wgvk` is the primary target. We use PUBLIC so that
+    # any consumers (like the examples) inherit these properties correctly.
+    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
+    target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
 endif()
 
+# Now, we apply all remaining properties to the primary target using the variable.
+# Because we used PUBLIC on the primary target and then propagated its interface
+# to the final `wgvk` target, these properties will be correctly inherited.
+if(WGVK_USE_VMA)
+    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC USE_VMA_ALLOCATOR=1)
+endif()
 
-
+# Platform-specific surface support
 if(WIN32)
-    target_compile_definitions(wgvk PUBLIC SUPPORT_WIN32_SURFACE=1)
-# For Apple (macOS, iOS) using Metal
+    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_WIN32_SURFACE=1)
 elseif(APPLE)
-    target_compile_definitions(wgvk PUBLIC SUPPORT_METAL_SURFACE=1)
-    # Link against frameworks required for a CAMetalLayer surface
-    target_link_libraries(wgvk PUBLIC "-framework Cocoa" "-framework Metal" "-framework QuartzCore")
-# For other Unix-like systems (primarily Linux)
+    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_METAL_SURFACE=1)
+    target_link_libraries(${WGVK_PRIMARY_TARGET_NAME} PUBLIC "-framework Cocoa" "-framework Metal" "-framework QuartzCore")
 elseif(UNIX)
     find_package(PkgConfig QUIET)
         
-    # Wayland Check
     pkg_check_modules(WAYLAND_CLIENT QUIET wayland-client)
     if(WAYLAND_CLIENT_FOUND)
         message(STATUS "Wayland found")
-        target_compile_definitions(wgvk PUBLIC SUPPORT_WAYLAND_SURFACE=1)
         set(GLFW_BUILD_WAYLAND ON)
-        target_link_libraries(wgvk PUBLIC wayland-client)
+        target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_WAYLAND_SURFACE=1)
+        target_link_libraries(${WGVK_PRIMARY_TARGET_NAME} PUBLIC wayland-client)
     endif()
 
-    # Check for X11 (Xlib) support
     find_package(X11 QUIET)
     if(X11_FOUND)
         set(GLFW_BUILD_X11 ON)
-        target_compile_definitions(wgvk PUBLIC SUPPORT_XLIB_SURFACE=1)
-        target_link_libraries(wgvk PUBLIC X11::X11)
+        target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_XLIB_SURFACE=1)
+        target_link_libraries(${WGVK_PRIMARY_TARGET_NAME} PUBLIC X11::X11)
     endif()
 endif()
+
 
 if(WGVK_BUILD_EXAMPLES)
     FetchContent_Declare(
@@ -154,6 +164,8 @@ if(WGVK_BUILD_EXAMPLES)
     add_executable(basic_compute "examples/basic_compute.c")
     add_executable(rgfw_surface "examples/rgfw_surface.c")
     
+    # Examples always link against the final `wgvk` target. Thanks to the fix above,
+    # they will now correctly inherit all necessary compile definitions.
     target_link_libraries(glfw_surface PUBLIC wgvk glfw)
     target_link_libraries(basic_compute PUBLIC wgvk glfw)
     target_link_libraries(rgfw_surface PUBLIC wgvk)

@@ -152,7 +152,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
     WGPUSurface ret = RL_CALLOC(1, sizeof(WGPUSurfaceImpl));
     ret->refCount = 1;
     switch(descriptor->nextInChain->sType){
-        #if SUPPORT_METAL_SURFACE
+        #if SUPPORT_METAL_SURFACE == 1
         case WGPUSType_SurfaceSourceMetalLayer:{
             WGPUSurfaceSourceMetalLayer* metalSource = (WGPUSurfaceSourceMetalLayer*)descriptor->nextInChain;
             VkMetalSurfaceCreateInfoEXT sci = {
@@ -167,7 +167,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
             );
         }break;
         #endif
-        #if SUPPORT_WIN32_SURFACE
+        #if SUPPORT_WIN32_SURFACE == 1
         case WGPUSType_SurfaceSourceWindowsHWND:{
             WGPUSurfaceSourceWindowsHWND* hwndSource = (WGPUSurfaceSourceWindowsHWND*)descriptor->nextInChain;
             VkWin32SurfaceCreateInfoKHR sci = {
@@ -184,9 +184,11 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
             );
         }break;
         #endif
-        #if SUPPORT_XLIB_SURFACE
+        #if SUPPORT_XLIB_SURFACE == 1
         case WGPUSType_SurfaceSourceXlibWindow:{
             WGPUSurfaceSourceXlibWindow* xlibSource = (WGPUSurfaceSourceXlibWindow*)descriptor->nextInChain;
+            wgvk_assert(xlibSource->window != 0, "xlibSource->window may not be 0");
+            wgvk_assert(xlibSource->display != NULL, "xlibSource->display may not be 0");
             VkXlibSurfaceCreateInfoKHR sci = {
                 .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
                 .window = xlibSource->window,
@@ -201,9 +203,11 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
             );
         }break;
         #endif
-        #if SUPPORT_WAYLAND_SURFACE
+        #if SUPPORT_WAYLAND_SURFACE == 1
         case WGPUSType_SurfaceSourceWaylandSurface:{
             WGPUSurfaceSourceWaylandSurface* waylandSource = (WGPUSurfaceSourceWaylandSurface*)descriptor->nextInChain;
+            wgvk_assert(waylandSource->surface != NULL, "waylandSource->window may not be 0");
+            wgvk_assert(waylandSource->display != NULL, "waylandSource->display may not be 0");
             VkWaylandSurfaceCreateInfoKHR sci = {
                 .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
                 .surface = (struct wl_surface*)waylandSource->surface,
@@ -217,7 +221,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
             );
         }break;
         #endif
-        #if SUPPORT_ANDROID_SURFACE
+        #if SUPPORT_ANDROID_SURFACE == 1
         case WGPUSType_SurfaceSourceAndroidNativeWindow:{
             WGPUSurfaceSourceAndroidNativeWindow* androidSource = (WGPUSurfaceSourceAndroidNativeWindow*)descriptor->nextInChain;
             VkAndroidSurfaceCreateInfoKHR sci = {
@@ -232,7 +236,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
             );
         }break;
         #endif
-        #if SUPPORT_XCB_SURFACE
+        #if SUPPORT_XCB_SURFACE == 1
         case WGPUSType_SurfaceSourceXCBWindow:{
             WGPUSurfaceSourceXCBWindow* xcbSource = (WGPUSurfaceSourceXCBWindow*)descriptor->nextInChain;
             VkXcbSurfaceCreateInfoKHR sci = {
