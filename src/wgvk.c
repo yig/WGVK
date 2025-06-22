@@ -89,7 +89,7 @@
 #define Matrix rlMatrix
 #include <wgvk_structs_impl.h>
 //#include <enum_translation.h>
-#if SUPPORT_WGSL_PARSER == 1
+#if SUPPORT_WGSL == 1
 #include <tint_c_api.h>
 #endif
 //#include "vulkan_internals.hpp"
@@ -658,12 +658,17 @@ static inline int endswith_(const char* str, const char* suffix) {
         
     return strcmp(str + str_len - suffix_len, suffix) == 0;
 }
+
 WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     WGPUInstance ret = (WGPUInstance)RL_CALLOC(1, sizeof(WGPUInstanceImpl));
-    ret->refCount = 1;
-    volkInitialize();
     if (!ret) {
-        fprintf(stderr, "Failed to allocate memory for WGPUInstanceImpl\n");
+        fprintf(stderr, "calloc failed to allocate memory for WGPUInstance\n");
+        return NULL;
+    }
+    ret->refCount = 1;
+    VkResult vresult = volkInitialize();
+    if(vresult != VK_SUCCESS){
+        fprintf(stderr, "Failed to initialize Vulkan. Most likely it's not installed\n");
         return NULL;
     }
     ret->instance = VK_NULL_HANDLE;
@@ -829,8 +834,9 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     };
     
     VkResult result = vkCreateInstance(&ici, NULL, &ret->instance);
-
-
+    if(result != VK_SUCCESS){
+        fprintf(stderr, "vkCreateInstance failed: %s\n", vkErrorString(result));
+    }
     // --- Free temporary extension memory ---
     RL_FREE(availableExtensions);        // Properties buffer
     RL_FREE((void*)enabledExtensions);   // Names buffer (pointers into availableExtensions)
@@ -938,8 +944,28 @@ void wgpuCreateAdapter_impl(void* userdata_v){
     for(i = 0;i < physicalDeviceCount;i++){
         VkPhysicalDeviceProperties properties zeroinit;
         vkGetPhysicalDeviceProperties(pds[i], &properties);
-        if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU){
+        if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU){
             break;
+        }
+    }
+    if(i == physicalDeviceCount){
+        i = 0;
+        for(i = 0;i < physicalDeviceCount;i++){
+            VkPhysicalDeviceProperties properties zeroinit;
+            vkGetPhysicalDeviceProperties(pds[i], &properties);
+            if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU){
+                break;
+            }
+        }
+    }
+    if(i == physicalDeviceCount){
+        i = 0;
+        for(i = 0;i < physicalDeviceCount;i++){
+            VkPhysicalDeviceProperties properties zeroinit;
+            vkGetPhysicalDeviceProperties(pds[i], &properties);
+            if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU){
+                break;
+            }
         }
     }
     WGPUAdapter adapter = (WGPUAdapter)RL_CALLOC(1, sizeof(WGPUAdapterImpl));
@@ -1655,9 +1681,13 @@ WGPUTexture wgpuDeviceCreateTexture(WGPUDevice device, const WGPUTextureDescript
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .pNext = NULL,
         .imageType = VK_IMAGE_TYPE_2D,
-        .extent = (VkExtent3D){ descriptor->size.width, descriptor->size.height, descriptor->size.depthOrArrayLayers },
+        .extent = {
+            .width = descriptor->size.width,
+            .height = descriptor->size.height,
+            .depth = 1
+        },
         .mipLevels = descriptor->mipLevelCount,
-        .arrayLayers = 1,
+        .arrayLayers = descriptor->size.depthOrArrayLayers,
         .format = toVulkanPixelFormat(descriptor->format),
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1681,6 +1711,8 @@ WGPUTexture wgpuDeviceCreateTexture(WGPUDevice device, const WGPUTextureDescript
         memReq.memoryTypeBits, 
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
     );
+    //wgvkAllocation allocation = {0};
+    //wgvkAllocator_alloc(&device->builtinAllocator, &memReq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &allocation);
     
     if (device->functions.vkAllocateMemory(device->device, &allocInfo, NULL, &imageMemory) != VK_SUCCESS){
         TRACELOG(WGPU_LOG_FATAL, "Failed to allocate image memory!");
@@ -2038,7 +2070,7 @@ WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShade
             ret->source = (WGPUChainedStruct*)copySource;
             return ret;
         }
-        #if SUPPORT_WGSL_PARSER == 1
+        #if SUPPORT_WGSL == 1
         case WGPUSType_ShaderSourceWGSL: {
             const WGPUShaderSourceWGSL* source = (WGPUShaderSourceWGSL*)descriptor->nextInChain;
             size_t length = (source->code.length == WGPU_STRLEN) ? strlen(source->code.data) : source->code.length;
@@ -2967,70 +2999,66 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
             destination_->lastLayout = setRenderPipeline->pipeline->layout->layout;
         }
         break;
-        case rp_command_type_execute_renderbundles:{
+        case rp_command_type_execute_renderbundle:{
             const RenderPassCommandExecuteRenderbundles* executeRenderBundles = &command->executeRenderBundles;
-            for(uint32_t i = 0;i < executeRenderBundles->renderBundleCount;i++){
-                WGPURenderBundle bundle = executeRenderBundles->renderBundles[i];
-                DefaultDynamicState ds = destination_->dynamicState;
-                VkCommandBuffer* maybeBuffer = DynamicStateCommandBufferMap_get(&bundle->encodedCommandBuffers, ds);
-                VkCommandBuffer executedBuffer;
-                if(maybeBuffer){
-                    executedBuffer = *maybeBuffer;
-                }
-                else{
-                    VkCommandBufferAllocateInfo bai = {
-                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                        .commandPool = device->secondaryCommandPool,
-                        .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-                        .commandBufferCount = 1
-                    };
-                    device->functions.vkAllocateCommandBuffers(device->device, &bai, &executedBuffer);
-                    
-                    VkCommandBufferInheritanceRenderingInfo renderingInfo = {
-                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
-                        .colorAttachmentCount = bundle->colorAttachmentCount,
-                        .pColorAttachmentFormats = bundle->colorAttachmentFormats,
-                        .depthAttachmentFormat = bundle->depthStencilFormat,
-                        .stencilAttachmentFormat = bundle->depthStencilFormat,
-                        .rasterizationSamples = 1 // todo
-                    };
-                
-                    VkCommandBufferInheritanceInfo inheritanceInfo = {
-                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-                        .pNext = &renderingInfo,
-                    };
-                
-                    VkCommandBufferBeginInfo beginInfo = {
-                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                        .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-                        .pInheritanceInfo = &inheritanceInfo
-                    };
-                    device->functions.vkBeginCommandBuffer(executedBuffer, &beginInfo);
-                    RenderPassCommandBegin dummyBeginInfo = {
-                        .colorAttachmentCount = bundle->colorAttachmentCount
-                    };
-                    
-                    for(uint32_t ai = 0;ai < bundle->colorAttachmentCount;ai++){
-                        device->functions.vkCmdSetViewport(executedBuffer, 0, 1, &ds.viewport   );
-                        if(ds.scissorRect.extent.width != UINT32_MAX){
-                            device->functions.vkCmdSetScissor (executedBuffer, 0, 1, &ds.scissorRect);
-                        }
-                        else{
-                            VkRect2D defaultRect = {
-                                .offset = {0, 0},
-                                .extent = {ds.viewport.width, ds.viewport.height}
-                            };
-                            device->functions.vkCmdSetScissor (executedBuffer, 0, 1, &defaultRect);
-                        }
-                    }
-                    recordVkCommands(executedBuffer, device, &bundle->bufferedCommands, &dummyBeginInfo);
-                    device->functions.vkEndCommandBuffer(executedBuffer);
-                    DynamicStateCommandBufferMap_put(&bundle->encodedCommandBuffers, ds, executedBuffer);
-                }
-
-
-                device->functions.vkCmdExecuteCommands(destination, 1, &executedBuffer);
+            WGPURenderBundle bundle = executeRenderBundles->renderBundle;
+            DefaultDynamicState ds = destination_->dynamicState;
+            VkCommandBuffer* maybeBuffer = DynamicStateCommandBufferMap_get(&bundle->encodedCommandBuffers, ds);
+            VkCommandBuffer executedBuffer;
+            if(maybeBuffer){
+                executedBuffer = *maybeBuffer;
             }
+            else{
+                VkCommandBufferAllocateInfo bai = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                    .commandPool = device->secondaryCommandPool,
+                    .level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+                    .commandBufferCount = 1
+                };
+                device->functions.vkAllocateCommandBuffers(device->device, &bai, &executedBuffer);
+                
+                VkCommandBufferInheritanceRenderingInfo renderingInfo = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO,
+                    .colorAttachmentCount = bundle->colorAttachmentCount,
+                    .pColorAttachmentFormats = bundle->colorAttachmentFormats,
+                    .depthAttachmentFormat = bundle->depthStencilFormat,
+                    .stencilAttachmentFormat = bundle->depthStencilFormat,
+                    .rasterizationSamples = 1 // todo
+                };
+            
+                VkCommandBufferInheritanceInfo inheritanceInfo = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+                    .pNext = &renderingInfo,
+                };
+            
+                VkCommandBufferBeginInfo beginInfo = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                    .flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+                    .pInheritanceInfo = &inheritanceInfo
+                };
+                device->functions.vkBeginCommandBuffer(executedBuffer, &beginInfo);
+                RenderPassCommandBegin dummyBeginInfo = {
+                    .colorAttachmentCount = bundle->colorAttachmentCount
+                };
+                
+                for(uint32_t ai = 0;ai < bundle->colorAttachmentCount;ai++){
+                    device->functions.vkCmdSetViewport(executedBuffer, 0, 1, &ds.viewport   );
+                    if(ds.scissorRect.extent.width != UINT32_MAX){
+                        device->functions.vkCmdSetScissor (executedBuffer, 0, 1, &ds.scissorRect);
+                    }
+                    else{
+                        VkRect2D defaultRect = {
+                            .offset = {0, 0},
+                            .extent = {ds.viewport.width, ds.viewport.height}
+                        };
+                        device->functions.vkCmdSetScissor (executedBuffer, 0, 1, &defaultRect);
+                    }
+                }
+                recordVkCommands(executedBuffer, device, &bundle->bufferedCommands, &dummyBeginInfo);
+                device->functions.vkEndCommandBuffer(executedBuffer);
+                DynamicStateCommandBufferMap_put(&bundle->encodedCommandBuffers, ds, executedBuffer);
+            }
+            device->functions.vkCmdExecuteCommands(destination, 1, &executedBuffer);
         }break;
         case cp_command_type_set_compute_pipeline: {
             const ComputePassCommandSetPipeline* setComputePipeline = &command->setComputePipeline;
@@ -4834,15 +4862,16 @@ void wgpuRenderPassEncoderSetVertexBuffer(WGPURenderPassEncoder rpe, uint32_t bi
 
 void wgpuRenderPassEncoderExecuteBundles(WGPURenderPassEncoder renderPassEncoder, size_t bundleCount, const WGPURenderBundle* bundles) WGPU_FUNCTION_ATTRIBUTE{
     wgvk_assert(renderPassEncoder != NULL, "RenderPassEncoderHandle is null");
-    RenderPassCommandGeneric insert = {
-        .type = rp_command_type_execute_renderbundles,
-        .executeRenderBundles = {
-            .renderBundles = bundles,
-            .renderBundleCount = bundleCount
-        }
-    };
-    RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
-    //TODO: trackRenderBundle?
+    for(uint32_t i = 0;i < bundleCount;i++){
+        RenderPassCommandGeneric insert = {
+            .type = rp_command_type_execute_renderbundle,
+            .executeRenderBundles = {
+                .renderBundle = bundles[i],
+            }
+        };
+        RenderPassCommandGenericVector_push_back(&renderPassEncoder->bufferedCommands, insert);
+        ru_trackRenderBundle(&renderPassEncoder->resourceUsage, bundles[i]);
+    }
 }
 
 
@@ -4967,6 +4996,16 @@ RGAPI void ru_trackRenderPipeline(ResourceUsage* resourceUsage, WGPURenderPipeli
 }
 RGAPI void ru_trackComputePipeline(ResourceUsage* resourceUsage, WGPUComputePipeline computePipeline){
     if(ComputePipelineUsageSet_add(&resourceUsage->referencedComputePipelines, computePipeline)){
+        ++computePipeline->refCount;
+    }
+}
+RGAPI void ru_trackQuerySet        (ResourceUsage* resourceUsage, WGPUQuerySet computePipeline){
+    if(QuerySetUsageSet_add(&resourceUsage->referencedQuerySets, computePipeline)){
+        ++computePipeline->refCount;
+    }
+}
+RGAPI void ru_trackRenderBundle    (ResourceUsage* resourceUsage, WGPURenderBundle computePipeline){
+if(RenderBundleUsageSet_add(&resourceUsage->referencedRenderBundles, computePipeline)){
         ++computePipeline->refCount;
     }
 }
@@ -5248,6 +5287,12 @@ static inline void computePipelineReleaseCallback(WGPUComputePipeline computePip
 }
 static inline void renderPipelineReleaseCallback(WGPURenderPipeline renderPipeline, void* unused){
     wgpuRenderPipelineRelease(renderPipeline);
+}
+static inline void renderBundleReleaseCallback(WGPURenderBundle renderPipeline, void* unused){
+    wgpuRenderBundleRelease(renderPipeline);
+}
+static inline void querySetReleaseCallback(WGPUQuerySet renderPipeline, void* unused){
+    wgpuQuerySetRelease(renderPipeline);
 }
 
 
@@ -5629,7 +5674,7 @@ static void wgpuShaderModuleGetReflectionInfo_sync(void* userdata_){
             }
         }
         break;
-        #if SUPPORT_WGSL_PARSER == 1
+        #if SUPPORT_WGSL == 1
         case WGPUSType_ShaderSourceWGSL:{
             WGPUShaderSourceWGSL* wgslSource = (WGPUShaderSourceWGSL*)module->source;
             WGPUReflectionInfo reflectionInfo = reflectionInfo_wgsl_sync(wgslSource->code);
@@ -5643,7 +5688,7 @@ static void wgpuShaderModuleGetReflectionInfo_sync(void* userdata_){
         }break;
         #else
         case WGPUSType_ShaderSourceWGSL:{
-            wgvk_assert(false, "Passed WGSL source without support, recompile with -DSUPPORT_WGSL_PARSER=1");
+            wgvk_assert(false, "Passed WGSL source without support, recompile with -DSUPPORT_WGSL=1");
         }break;
         #endif
         default:
@@ -6298,6 +6343,8 @@ RGAPI void releaseAllAndClear(ResourceUsage* resourceUsage){
     SamplerUsageSet_for_each(&resourceUsage->referencedSamplers, samplerReleaseCallback, NULL);
     ComputePipelineUsageSet_for_each(&resourceUsage->referencedComputePipelines, computePipelineReleaseCallback, NULL);
     RenderPipelineUsageSet_for_each(&resourceUsage->referencedRenderPipelines, renderPipelineReleaseCallback, NULL);
+    RenderBundleUsageSet_for_each(&resourceUsage->referencedRenderBundles, renderBundleReleaseCallback, NULL);
+    QuerySetUsageSet_for_each(&resourceUsage->referencedQuerySets, querySetReleaseCallback, NULL);
 
     BufferUsageRecordMap_free(&resourceUsage->referencedBuffers);
     ImageUsageRecordMap_free(&resourceUsage->referencedTextures);
@@ -6307,6 +6354,8 @@ RGAPI void releaseAllAndClear(ResourceUsage* resourceUsage){
     SamplerUsageSet_free(&resourceUsage->referencedSamplers);
     ComputePipelineUsageSet_free(&resourceUsage->referencedComputePipelines);
     RenderPipelineUsageSet_free(&resourceUsage->referencedRenderPipelines);
+    RenderBundleUsageSet_free(&resourceUsage->referencedRenderBundles);
+    QuerySetUsageSet_free(&resourceUsage->referencedQuerySets);
 }
 
 

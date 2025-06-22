@@ -1,23 +1,116 @@
 cmake_minimum_required(VERSION 3.19)
 project(wgvk)
 include(FetchContent)
-option(WGVK_BUILD_EXAMPLES "Build some WGVK examples" ON)
+
+option(WGVK_BUILD_EXAMPLES "Build some WGVK examples" OFF)
+option(WGVK_BUILD_WGSL_SUPPORT "Build the WGSL->SPIRV compiler" OFF)
 option(WGVK_USE_VMA "Use GPUOpen's VMA allocator (Requires C++)" OFF)
+
+
+function(wgvk_bundle_libraries output_target)
+  function(get_dependencies input_target)
+    get_target_property(alias ${input_target} ALIASED_TARGET)
+    if(TARGET ${alias})
+      set(input_target ${alias})
+    endif()
+    if(${input_target} IN_LIST all_dependencies)
+      return()
+    endif()
+    list(APPEND all_dependencies ${input_target})
+    get_target_property(link_libraries ${input_target} LINK_LIBRARIES)
+    foreach(dependency IN LISTS link_libraries)
+      if(TARGET ${dependency})
+        get_dependencies(${dependency})
+      endif()
+    endforeach()
+    get_target_property(link_libraries ${input_target} INTERFACE_LINK_LIBRARIES)
+    foreach(dependency IN LISTS link_libraries)
+      if(TARGET ${dependency})
+        get_dependencies(${dependency})
+      endif()
+    endforeach()
+    set(all_dependencies ${all_dependencies} PARENT_SCOPE)
+  endfunction()
+  foreach(input_target IN LISTS ARGN)
+    get_dependencies(${input_target})
+  endforeach()
+  foreach(dependency IN LISTS all_dependencies)
+    get_target_property(type ${dependency} TYPE)
+    if(${type} STREQUAL "STATIC_LIBRARY")
+      list(APPEND all_objects $<TARGET_OBJECTS:${dependency}>)
+    elseif(${type} STREQUAL "OBJECT_LIBRARY")
+      list(APPEND all_objects $<TARGET_OBJECTS:${dependency}>)
+    endif()
+  endforeach()
+
+  add_library(${output_target} STATIC ${all_objects})
+
+  add_dependencies(${output_target} ${ARGN})
+
+endfunction()
+
 # Lock in static for now
-set(WGVK_SRC_LIST "src/wgvk.c")
+
+
+
+set(WGVK_CORE_SRC_LIST "src/wgvk.c")
 if(SANITIZE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined")
 endif()
 if(WGVK_USE_VMA)
-    list(APPEND WGVK_SRC_LIST "src/vma_impl.cpp")
-endif()
-add_library(wgvk STATIC ${WGVK_SRC_LIST})
-target_compile_definitions(wgvk PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
-if(WGVK_USE_VMA)
-    target_compile_definitions(wgvk PUBLIC USE_VMA_ALLOCATOR=1)
+    list(APPEND WGVK_CORE_SRC_LIST "src/vma_impl.cpp")
 endif()
 
-target_include_directories(wgvk PUBLIC include)
+
+
+if(WGVK_BUILD_WGSL_SUPPORT)
+    add_library(wgvk_core STATIC ${WGVK_CORE_SRC_LIST})
+    target_compile_definitions(wgvk_core PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
+    if(WGVK_USE_VMA)
+        target_compile_definitions(wgvk_core PUBLIC USE_VMA_ALLOCATOR=1)
+    endif()
+
+    target_include_directories(wgvk_core PUBLIC include)
+
+    set(DAWN_ENABLE_DESKTOP_GL OFF)
+    set(DAWN_ENABLE_OPENGLES OFF)
+    set(DAWN_ENABLE_VULKAN OFF)
+    set(DAWN_ENABLE_SPIRV_VALIDATION OFF)
+    set(DAWN_BUILD_SAMPLES OFF)
+    set(DAWN_USE_GLFW OFF)
+    set(DAWN_USE_X11 OFF)
+    set(DAWN_USE_WAYLAND OFF)
+    set(TINT_BUILD_GLSL_WRITER OFF)
+    set(TINT_BUILD_CMD_TOOLS OFF)
+    set(TINT_BUILD_SPV_READER OFF)
+    set(TINT_BUILD_SPV_WRITER ON)
+    set(TINT_BUILD_WGSL_WRITER OFF)
+    set(TINT_BUILD_TESTS OFF)
+    set(TINT_BUILD_GLSL_VALIDATOR OFF)
+    FetchContent_Declare(
+        dawn
+        URL https://github.com/manuel5975p/dawn_monorepo/archive/refs/tags/v7252.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP True
+    )
+    FetchContent_MakeAvailable(dawn)
+    add_library(tint_c_api STATIC "src/tint_c_api.cpp")
+    target_include_directories(tint_c_api PRIVATE "include")
+    target_include_directories(tint_c_api PRIVATE "${dawn_SOURCE_DIR}")
+    target_compile_features(tint_c_api PRIVATE cxx_std_20)
+    target_compile_definitions(wgvk_core PUBLIC SUPPORT_WGSL=1)
+    wgvk_bundle_libraries(wgvk wgvk_core tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api)
+    target_include_directories(wgvk PUBLIC include)
+else()
+    add_library(wgvk STATIC ${WGVK_CORE_SRC_LIST})
+    target_compile_definitions(wgvk PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
+    if(WGVK_USE_VMA)
+        target_compile_definitions(wgvk PUBLIC USE_VMA_ALLOCATOR=1)
+    endif()
+
+    target_include_directories(wgvk PUBLIC include)
+
+endif()
+
 
 
 if(WIN32)

@@ -926,7 +926,7 @@ typedef enum RCPassCommandType{
     rp_command_type_set_index_buffer,
     rp_command_type_set_bind_group,
     rp_command_type_set_render_pipeline,
-    rp_command_type_execute_renderbundles,
+    rp_command_type_execute_renderbundle,
     cp_command_type_set_compute_pipeline,
     cp_command_type_dispatch_workgroups,
     cp_command_type_dispatch_workgroups_indirect,
@@ -979,8 +979,7 @@ typedef struct RenderPassCommandSetPipeline {
 } RenderPassCommandSetPipeline;
 
 typedef struct RenderPassCommandExecuteRenderbundles{
-    const WGPURenderBundle* renderBundles;
-    uint32_t renderBundleCount;
+    WGPURenderBundle renderBundle;
 }RenderPassCommandExecuteRenderbundles;
 
 typedef struct ComputePassCommandSetPipeline {
@@ -1103,10 +1102,12 @@ DEFINE_PTR_HASH_SET (CONTAINERAPI, ImageViewUsageSet, WGPUTextureView)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, WGPURenderPassEncoderSet, WGPURenderPassEncoder)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, RenderPipelineUsageSet, WGPURenderPipeline)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, ComputePipelineUsageSet, WGPUComputePipeline)
+DEFINE_PTR_HASH_SET (CONTAINERAPI, RenderBundleUsageSet, WGPURenderBundle)
+DEFINE_PTR_HASH_SET (CONTAINERAPI, QuerySetUsageSet, WGPUQuerySet)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, WGPUComputePassEncoderSet, WGPUComputePassEncoder)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, WGPURaytracingPassEncoderSet, WGPURaytracingPassEncoder)
 
-DEFINE_VECTOR(static inline, VkDynamicState, VkDynamicStateVector)
+DEFINE_VECTOR (static inline, VkDynamicState, VkDynamicStateVector)
 DEFINE_VECTOR (CONTAINERAPI, VkWriteDescriptorSet, VkWriteDescriptorSetVector)
 DEFINE_VECTOR (CONTAINERAPI, WGPUFence, WGPUFenceVector)
 DEFINE_VECTOR (CONTAINERAPI, VkFence, VkFenceVector)
@@ -1146,6 +1147,8 @@ typedef struct ResourceUsage{
     SamplerUsageSet referencedSamplers;
     RenderPipelineUsageSet referencedRenderPipelines;
     ComputePipelineUsageSet referencedComputePipelines;
+    RenderBundleUsageSet referencedRenderBundles;
+    QuerySetUsageSet referencedQuerySets;
     //LayoutAssumptions entryAndFinalLayouts;
 }ResourceUsage;
 
@@ -1156,6 +1159,8 @@ static inline void ResourceUsage_free(ResourceUsage* ru){
     BindGroupUsageSet_free(&ru->referencedBindGroups);
     BindGroupLayoutUsageSet_free(&ru->referencedBindGroupLayouts);
     SamplerUsageSet_free(&ru->referencedSamplers);
+    QuerySetUsageSet_free(&ru->referencedQuerySets);
+    RenderBundleUsageSet_free(&ru->referencedRenderBundles);
 }
 
 static inline void ResourceUsage_move(ResourceUsage* dest, ResourceUsage* source){
@@ -1165,6 +1170,8 @@ static inline void ResourceUsage_move(ResourceUsage* dest, ResourceUsage* source
     BindGroupUsageSet_move(&dest->referencedBindGroups, &source->referencedBindGroups);
     BindGroupLayoutUsageSet_move(&dest->referencedBindGroupLayouts, &source->referencedBindGroupLayouts);
     SamplerUsageSet_move(&dest->referencedSamplers, &source->referencedSamplers);
+    QuerySetUsageSet_free(&dest->referencedQuerySets);
+    RenderBundleUsageSet_free(&dest->referencedRenderBundles);
     //LayoutAssumptions_move(&dest->entryAndFinalLayouts, &source->entryAndFinalLayouts);
 }
 
@@ -1175,6 +1182,8 @@ static inline void ResourceUsage_init(ResourceUsage* ru){
     BindGroupUsageSet_init(&ru->referencedBindGroups);
     BindGroupLayoutUsageSet_init(&ru->referencedBindGroupLayouts);
     SamplerUsageSet_init(&ru->referencedSamplers);
+    RenderBundleUsageSet_init(&ru->referencedRenderBundles);
+    QuerySetUsageSet_init(&ru->referencedQuerySets);
     //LayoutAssumptions_init(&ru->entryAndFinalLayouts);
 }
 
@@ -1187,6 +1196,8 @@ RGAPI void ru_trackBindGroupLayout (ResourceUsage* resourceUsage, WGPUBindGroupL
 RGAPI void ru_trackSampler         (ResourceUsage* resourceUsage, WGPUSampler sampler);
 RGAPI void ru_trackRenderPipeline  (ResourceUsage* resourceUsage, WGPURenderPipeline rpl);
 RGAPI void ru_trackComputePipeline (ResourceUsage* resourceUsage, WGPUComputePipeline computePipeline);
+RGAPI void ru_trackQuerySet        (ResourceUsage* resourceUsage, WGPUQuerySet computePipeline);
+RGAPI void ru_trackRenderBundle    (ResourceUsage* resourceUsage, WGPURenderBundle computePipeline);
 
 RGAPI void ce_trackBuffer(WGPUCommandEncoder encoder, WGPUBuffer buffer, BufferUsageSnap usage);
 RGAPI void ce_trackTexture(WGPUCommandEncoder encoder, WGPUTexture texture, ImageUsageSnap usage);
@@ -1338,28 +1349,6 @@ static inline void xs_update_u32(wgpuxorshiftstate* state, uint32_t x, uint32_t 
     state->x64 ^= state->x64 << 17;
 
 }
-#ifdef __cplusplus
-namespace std{
-    template<>
-    struct hash<RenderPassLayout>{
-        constexpr size_t operator()(const RenderPassLayout& layout)const noexcept{
-
-            wgpuxorshiftstate ret{0x2545F4918F6CDD1D};
-            ret.update(layout.depthAttachmentPresent << 6, layout.colorAttachmentCount);
-            for(uint32_t i = 0;i < layout.colorAttachmentCount;i++){
-                ret.update(layout.colorAttachments[i].format, layout.colorAttachments[i].sampleCount);
-                ret.update(layout.colorAttachments[i].loadop, layout.colorAttachments[i].storeop);
-            }
-            ret.update(layout.depthAttachmentPresent << 6, layout.depthAttachmentPresent);
-            if(layout.depthAttachmentPresent){
-                ret.update(layout.depthAttachment.format, layout.depthAttachment.sampleCount);
-                ret.update(layout.depthAttachment.loadop, layout.depthAttachment.storeop);
-            }
-            return ret.x64;
-        }
-    };
-}
-#endif
 
 static size_t renderPassLayoutHash(RenderPassLayout layout){
     wgpuxorshiftstate ret = {.x64 = 0x2545F4918F6CDD1D};
@@ -1932,6 +1921,7 @@ typedef struct WGPUQueueImpl{
 
 typedef struct WGPUQuerySetImpl{
     VkQueryPool queryPool;
+    refcount_type refCount;
     WGPUDevice device;
 }WGPUQuerySetImpl;
 
@@ -2216,7 +2206,7 @@ WGPUCompositeAlphaMode fromVulkanCompositeAlphaMode(VkCompositeAlphaFlagBitsKHR 
     }
     return WGPUCompositeAlphaMode_Force32;
 }
-VkCompositeAlphaFlagBitsKHR toVulkanCompositeAlphaMode(WGPUCompositeAlphaMode wacm){
+VkCompositeAlphaFlagsKHR toVulkanCompositeAlphaMode(WGPUCompositeAlphaMode wacm){
     switch(wacm){
         case WGPUCompositeAlphaMode_Opaque: return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         case WGPUCompositeAlphaMode_Premultiplied: return VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
