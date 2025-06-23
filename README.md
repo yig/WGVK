@@ -10,6 +10,7 @@
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-lightgreen.svg" alt="Platform" height="25">
 </a>
 
+
 A minimal, standalone, single-file implementation of the WebGPU API in C99, built on top of Vulkan 1.1. WGVK is designed for easy integration into C/C++ projects, providing a modern graphics and compute API without the steep learning curve of raw Vulkan.
 
 ## Features

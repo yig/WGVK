@@ -991,7 +991,8 @@ typedef struct ComputePassCommandDispatchWorkgroups {
 } ComputePassCommandDispatchWorkgroups;
 
 typedef struct ComputePassCommandDispatchWorkgroupsIndirect {
-    WGPUBuffer dispatchBuffer;
+    WGPUBuffer buffer;
+    size_t offset;
 }ComputePassCommandDispatchWorkgroupsIndirect;
 
 typedef struct RenderPassCommandSetViewport{
@@ -1087,6 +1088,7 @@ typedef struct RenderPassCommandGeneric {
         RenderPassCommandMultiDrawIndirect multiDrawIndirect;
         ComputePassCommandSetPipeline setComputePipeline;
         ComputePassCommandDispatchWorkgroups dispatchWorkgroups;
+        ComputePassCommandDispatchWorkgroupsIndirect dispatchWorkgroupsIndirect;
     };
 }RenderPassCommandGeneric;
 
@@ -1115,6 +1117,7 @@ DEFINE_VECTOR (CONTAINERAPI, VkCommandBuffer, VkCommandBufferVector)
 DEFINE_VECTOR (CONTAINERAPI, RenderPassCommandGeneric, RenderPassCommandGenericVector)
 DEFINE_VECTOR (CONTAINERAPI, VkSemaphore, VkSemaphoreVector)
 DEFINE_VECTOR (CONTAINERAPI, WGPUCommandBuffer, WGPUCommandBufferVector)
+DEFINE_VECTOR (CONTAINERAPI, WGPUCommandEncoder, WGPUCommandEncoderVector)
 DEFINE_VECTOR (CONTAINERAPI, VkDescriptorBufferInfo, VkDescriptorBufferInfoVector)
 DEFINE_VECTOR (CONTAINERAPI, VkDescriptorImageInfo, VkDescriptorImageInfoVector)
 DEFINE_VECTOR (CONTAINERAPI, VkWriteDescriptorSetAccelerationStructureKHR, VkWriteDescriptorSetAccelerationStructureKHRVector)

@@ -3088,6 +3088,12 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
         }
         break;
         case cp_command_type_dispatch_workgroups_indirect:{
+            const ComputePassCommandDispatchWorkgroupsIndirect* dispatch = &command->dispatchWorkgroupsIndirect;
+            device->functions.vkCmdDispatchIndirect(
+                destination,
+                dispatch->buffer->buffer,
+                dispatch->offset
+            );
         }break;
         case rp_command_type_begin_occlusion_query:{
 
@@ -3161,6 +3167,82 @@ void registerTransitionCallback(void* texture_, ImageUsageRecord* record, void* 
     //ce_trackTexture(pscache, texture, artificial);
 }
 
+
+DEFINE_VECTOR(static inline, VkBufferMemoryBarrier, VkBufferMemoryBarrierVector)
+DEFINE_VECTOR(static inline, VkMemoryBarrier, VkMemoryBarrierVector)
+DEFINE_VECTOR(static inline, VkImageMemoryBarrier, VkImageMemoryBarrierVector)
+typedef struct CmdBarrierSet{
+    VkBufferMemoryBarrierVector bufferBarriers;
+    VkMemoryBarrierVector memoryBarriers;
+    VkImageMemoryBarrierVector imageBarriers;
+}CmdBarrierSet;
+
+static void CmdBarrierSet_init(CmdBarrierSet* set){
+    VkBufferMemoryBarrierVector_init(&set->bufferBarriers);
+    VkMemoryBarrierVector_init(&set->memoryBarriers);
+    VkImageMemoryBarrierVector_init(&set->imageBarriers);
+}
+
+static void CmdBarrierSet_free(CmdBarrierSet* set){
+    VkBufferMemoryBarrierVector_free(&set->bufferBarriers);
+    VkMemoryBarrierVector_free(&set->memoryBarriers);
+    VkImageMemoryBarrierVector_free(&set->imageBarriers);
+}
+
+static void CmdBarrierSet_encode(WGPUCommandEncoder encoder, CmdBarrierSet* set){
+    struct VolkDeviceTable* functions = &encoder->device->functions;
+    functions->vkCmdPipelineBarrier(
+        encoder->buffer,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        0,
+        set->memoryBarriers.size, set->memoryBarriers.data,
+        set->bufferBarriers.size, set->bufferBarriers.data,
+        set->imageBarriers.size, set->imageBarriers.data
+    );
+}
+
+static CmdBarrierSet GetCompatibilityBarriers(WGPUCommandBuffer srcBuffer, WGPUCommandBuffer dstBuffer){
+    CmdBarrierSet ret;
+    CmdBarrierSet_init(&ret);
+    for(size_t i = 0;i < srcBuffer->resourceUsage.referencedTextures.current_capacity;i++){
+        const ImageUsageRecordMap_kv_pair* srcPair = srcBuffer->resourceUsage.referencedTextures.table + i;
+        const ImageUsageRecord* dstValue = ImageUsageRecordMap_get(&dstBuffer->resourceUsage.referencedTextures, srcPair->key);
+        if(dstValue){
+            VkImageMemoryBarrier insert = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .image = ((WGPUTexture)srcPair->key)->image,
+                .srcQueueFamilyIndex = srcBuffer->device->adapter->queueIndices.graphicsIndex,
+                .dstQueueFamilyIndex = srcBuffer->device->adapter->queueIndices.graphicsIndex,
+                .oldLayout = srcPair->value.lastLayout,
+                .newLayout = dstValue->initialLayout,
+                .srcAccessMask = srcPair->value.lastAccess,
+                .dstAccessMask = dstValue->initialAccess
+            };
+            VkImageMemoryBarrierVector_push_back(&ret.imageBarriers, insert);
+        }
+    }
+    for(size_t i = 0;i < srcBuffer->resourceUsage.referencedBuffers.current_capacity;i++){
+        const BufferUsageRecordMap_kv_pair* srcPair = srcBuffer->resourceUsage.referencedBuffers.table + i;
+        const BufferUsageRecord* dstValue = BufferUsageRecordMap_get(&dstBuffer->resourceUsage.referencedBuffers, srcPair->key);
+        if(dstValue){
+            VkBufferMemoryBarrier insert = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .buffer = ((WGPUBuffer)srcPair->key)->buffer,
+                .offset = 0,
+                .size = ((WGPUBuffer)srcPair->key)->capacity,
+                .srcQueueFamilyIndex = srcBuffer->device->adapter->queueIndices.graphicsIndex,
+                .dstQueueFamilyIndex = srcBuffer->device->adapter->queueIndices.graphicsIndex,
+                .srcAccessMask = srcPair->value.lastAccess,
+                .dstAccessMask = dstValue->initialAccess
+            };
+            VkBufferMemoryBarrierVector_push_back(&ret.bufferBarriers, insert);
+        }
+    }
+
+    return ret;
+}
+
 void updateLayoutCallback(void* texture_, ImageUsageRecord* record, void* unused){
     WGPUTexture texture = (WGPUTexture)texture_;
     texture->layout = record->lastLayout;
@@ -3217,7 +3299,18 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     PerframeCache* perFrameCache = &queue->device->frameCaches[cacheIndex];
     
     VkResult submitResult = 0;
-    if(use_single_submit){
+    if(use_single_submit && submittable.size > 0){
+        WGPUCommandEncoderVector interspersedBuffers;
+        WGPUCommandEncoderVector_init(&interspersedBuffers);
+        
+        for(size_t cbi = 0;cbi < submittable.size - 1;cbi++){
+            CmdBarrierSet set;
+            CmdBarrierSet_init(&set);
+            GetCompatibilityBarriers(buffers[cbi], buffers[cbi + 1]);
+            CmdBarrierSet_encode(interspersedBuffers.data[cbi], &set);
+            CmdBarrierSet_free(&set);
+        }
+
         VkSemaphoreVector waitSemaphores;
         VkSemaphoreVector_init(&waitSemaphores);
         if(queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){
@@ -5002,30 +5095,8 @@ RGAPI void ru_trackSampler         (ResourceUsage* resourceUsage, WGPUSampler sa
     }
 }
 
-DEFINE_VECTOR(static inline, VkBufferMemoryBarrier, VkBufferMemoryBarrierVector)
-DEFINE_VECTOR(static inline, VkMemoryBarrier, VkMemoryBarrierVector)
-DEFINE_VECTOR(static inline, VkImageMemoryBarrier, VkImageMemoryBarrierVector)
 
-typedef struct CmdBarrierSet{
-    VkBufferMemoryBarrierVector bufferBarriers;
-    VkMemoryBarrierVector memoryBarriers;
-    VkImageMemoryBarrierVector imageBarriers;
-}CmdBarrierSet;
 
-static void CmdBarrierSet_init(CmdBarrierSet* set){
-    VkBufferMemoryBarrierVector_init(&set->bufferBarriers);
-    VkMemoryBarrierVector_init(&set->memoryBarriers);
-    VkImageMemoryBarrierVector_init(&set->imageBarriers);
-}
-
-static void CmdBarrierSet_free(CmdBarrierSet* set){
-    VkBufferMemoryBarrierVector_free(&set->bufferBarriers);
-    VkMemoryBarrierVector_free(&set->memoryBarriers);
-    VkImageMemoryBarrierVector_free(&set->imageBarriers);
-}
-static CmdBarrierSet GetCompatibilityBarriers(WGPUCommandBuffer srcBuffer, WGPUCommandBuffer dstBuffer){
-    
-}
 typedef enum barrierType{
     bt_no_barrier = 0,
     bt_buffer_barrier = 1,
@@ -5853,7 +5924,14 @@ void wgpuCommandEncoderAddRef(WGPUCommandEncoder commandEncoder) {}
 
 // Stubs for missing Methods of ComputePassEncoder
 void wgpuComputePassEncoderDispatchWorkgroupsIndirect(WGPUComputePassEncoder computePassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) {
-    
+    RenderPassCommandGeneric insert = {
+        .type = cp_command_type_dispatch_workgroups_indirect,
+        .dispatchWorkgroupsIndirect = {
+            .buffer = indirectBuffer,
+            .offset = indirectOffset
+        }
+    };
+    ComputePassEncoder_PushCommand(computePassEncoder, &insert);
 }
 void wgpuComputePassEncoderInsertDebugMarker(WGPUComputePassEncoder computePassEncoder, WGPUStringView markerLabel) {}
 void wgpuComputePassEncoderPopDebugGroup(WGPUComputePassEncoder computePassEncoder) {}
