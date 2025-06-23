@@ -3442,39 +3442,10 @@ void wgpuSurfaceGetCapabilities(WGPUSurface wgpuSurface, WGPUAdapter adapter, WG
 }
 
 void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* config){
-    WGPUDevice device = config->device;
-    surface->device = config->device;
-    surface->lastConfig = *config;
-    device->functions.vkDeviceWaitIdle(device->device);
-    uint32_t cacheIndex = surface->device->submittedFrames % framesInFlight;
-    if(surface->device->queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){
-        VkPipelineStageFlags wm = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        VkSubmitInfo sinfo = {
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext = NULL,
-            .pWaitDstStageMask = &wm,
-            .pWaitSemaphores = &surface->device->queue->syncState[cacheIndex].acquireImageSemaphore,
-            .waitSemaphoreCount = 1
-        };
-        surface->device->functions.vkQueueSubmit(surface->device->queue->graphicsQueue, 1, &sinfo, surface->device->frameCaches[cacheIndex].finalTransitionFence->fence);
-        surface->device->queue->syncState[cacheIndex].acquireImageSemaphoreSignalled = false;
-        surface->device->functions.vkWaitForFences(surface->device->device, 1, &surface->device->frameCaches[cacheIndex].finalTransitionFence->fence, VK_TRUE, UINT64_MAX);
-        surface->device->functions.vkResetFences(surface->device->device, 1, &surface->device->frameCaches[cacheIndex].finalTransitionFence->fence);
-    }
-    if(surface->presentSemaphores){
-        for (uint32_t i = 0; i < surface->imagecount; i++) {
-            device->functions.vkDestroySemaphore(surface->device->device, surface->presentSemaphores[i], NULL);
-        }
-        RL_FREE((void*)surface->presentSemaphores);
-        surface->presentSemaphores = NULL;
-    }
-
-    //std::free(surface->framebuffers);
     if(surface->swapchain){
-        RL_FREE((void*)surface->images);
-        
-        device->functions.vkDestroySwapchainKHR(device->device, surface->swapchain, NULL);
+        wgpuSurfaceUnconfigure(surface);
     }
+    WGPUDevice device = config->device;
     VkSurfaceCapabilitiesKHR vkCapabilities zeroinit;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->adapter->physicalDevice, surface->surface, &vkCapabilities);
     VkSwapchainCreateInfoKHR createInfo zeroinit;
@@ -5030,6 +5001,31 @@ RGAPI void ru_trackSampler         (ResourceUsage* resourceUsage, WGPUSampler sa
         ++sampler->refCount;
     }
 }
+
+DEFINE_VECTOR(static inline, VkBufferMemoryBarrier, VkBufferMemoryBarrierVector)
+DEFINE_VECTOR(static inline, VkMemoryBarrier, VkMemoryBarrierVector)
+DEFINE_VECTOR(static inline, VkImageMemoryBarrier, VkImageMemoryBarrierVector)
+
+typedef struct CmdBarrierSet{
+    VkBufferMemoryBarrierVector bufferBarriers;
+    VkMemoryBarrierVector memoryBarriers;
+    VkImageMemoryBarrierVector imageBarriers;
+}CmdBarrierSet;
+
+static void CmdBarrierSet_init(CmdBarrierSet* set){
+    VkBufferMemoryBarrierVector_init(&set->bufferBarriers);
+    VkMemoryBarrierVector_init(&set->memoryBarriers);
+    VkImageMemoryBarrierVector_init(&set->imageBarriers);
+}
+
+static void CmdBarrierSet_free(CmdBarrierSet* set){
+    VkBufferMemoryBarrierVector_free(&set->bufferBarriers);
+    VkMemoryBarrierVector_free(&set->memoryBarriers);
+    VkImageMemoryBarrierVector_free(&set->imageBarriers);
+}
+static CmdBarrierSet GetCompatibilityBarriers(WGPUCommandBuffer srcBuffer, WGPUCommandBuffer dstBuffer){
+    
+}
 typedef enum barrierType{
     bt_no_barrier = 0,
     bt_buffer_barrier = 1,
@@ -6030,8 +6026,41 @@ void wgpuShaderModuleSetLabel(WGPUShaderModule shaderModule, WGPUStringView labe
 
 // Stubs for missing Methods of Surface
 void wgpuSurfaceSetLabel(WGPUSurface surface, WGPUStringView label) {}
-void wgpuSurfaceUnconfigure(WGPUSurface surface) {}
-void wgpuSurfaceAddRef(WGPUSurface surface) {}
+void wgpuSurfaceUnconfigure(WGPUSurface surface) {
+    WGPUDevice device = surface->device;
+    device->functions.vkDeviceWaitIdle(device->device);
+    uint32_t cacheIndex = surface->device->submittedFrames % framesInFlight;
+    if(surface->device->queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){
+        VkPipelineStageFlags wm = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+        VkSubmitInfo sinfo = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = NULL,
+            .pWaitDstStageMask = &wm,
+            .pWaitSemaphores = &surface->device->queue->syncState[cacheIndex].acquireImageSemaphore,
+            .waitSemaphoreCount = 1
+        };
+        device->functions.vkQueueSubmit(surface->device->queue->graphicsQueue, 1, &sinfo, surface->device->frameCaches[cacheIndex].finalTransitionFence->fence);
+        device->queue->syncState[cacheIndex].acquireImageSemaphoreSignalled = false;
+        device->functions.vkWaitForFences(surface->device->device, 1, &surface->device->frameCaches[cacheIndex].finalTransitionFence->fence, VK_TRUE, UINT64_MAX);
+        device->functions.vkResetFences(surface->device->device, 1, &surface->device->frameCaches[cacheIndex].finalTransitionFence->fence);
+    }
+    if(surface->presentSemaphores){
+        for (uint32_t i = 0; i < surface->imagecount; i++) {
+            device->functions.vkDestroySemaphore(surface->device->device, surface->presentSemaphores[i], NULL);
+        }
+        RL_FREE((void*)surface->presentSemaphores);
+        surface->presentSemaphores = NULL;
+    }
+
+    if(surface->swapchain){
+        RL_FREE((void*)surface->images);
+        device->functions.vkDestroySwapchainKHR(device->device, surface->swapchain, NULL);
+        surface->swapchain = NULL;
+    }
+}
+void wgpuSurfaceAddRef(WGPUSurface surface) {
+    ++surface->refCount;
+}
 
 // Stubs for missing Methods of Texture
 void wgpuTextureDestroy(WGPUTexture texture) {}

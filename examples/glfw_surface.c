@@ -14,10 +14,10 @@ INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
 #    define GLFW_PLATFORM_EMSCRIPTEN 0
 #  endif
 #else // __EMSCRIPTEN__
-#  ifdef SUPPORT_XLIB_SURFACE
+#  if SUPPORT_XLIB_SURFACE == 1
 #    define GLFW_EXPOSE_NATIVE_X11
 #  endif
-#  ifdef SUPPORT_WAYLAND_SURFACE
+#  if SUPPORT_WAYLAND_SURFACE == 1
 #    define GLFW_EXPOSE_NATIVE_WAYLAND
 #  endif
 #  ifdef _GLFW_COCOA
@@ -208,7 +208,7 @@ int main(){
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     WGPUSurfaceCapabilities caps = {0};
-    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Mailbox;
+    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Fifo;
     WGPUSurface surface = wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
