@@ -2793,7 +2793,7 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
 
     const VkRenderingInfo info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-        .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
+        .flags = 0,//VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
         .colorAttachmentCount = beginInfo->colorAttachmentCount,
         .pColorAttachments = colorAttachments,
         .pDepthAttachment = beginInfo->depthAttachmentPresent ? &(const VkRenderingAttachmentInfo){
@@ -2899,10 +2899,10 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                 (float)setBlendConstant->color.b,
                 (float)setBlendConstant->color.a,
             };
-            //device->functions.vkCmdSetBlendConstants(
-            //    destination,
-            //    buffer
-            //);
+            device->functions.vkCmdSetBlendConstants(
+                destination,
+                buffer
+            );
         }
         break;
         case rp_command_type_set_viewport:{
@@ -4167,18 +4167,17 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
 
 
     // Dynamic State
-    uint32_t dynamicStateCount = 2;
+    uint32_t dynamicStateCount = 3;
     VkDynamicState dynamicStates[4] = {
         VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR
-        // Add VK_DYNAMIC_STATE_STENCIL_REFERENCE if stencil test is enabled and reference is not fixed
+        VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+        VK_DYNAMIC_STATE_STENCIL_REFERENCE
     };
     if (depthStencil.stencilTestEnable) {
         dynamicStates[dynamicStateCount++] = VK_DYNAMIC_STATE_STENCIL_REFERENCE;
     }
-    if (rasterizer.depthBiasEnable) {
-        dynamicStates[dynamicStateCount++] = VK_DYNAMIC_STATE_DEPTH_BIAS;
-    }
+    
 
 
     VkPipelineDynamicStateCreateInfo dynamicState zeroinit;
@@ -4971,7 +4970,7 @@ void wgpuRenderPassEncoderDrawIndirect           (WGPURenderPassEncoder renderPa
     };
     RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
 }
-void wgpuRenderPassEncoderSetBlendConstant       (WGPURenderPassEncoder renderPassEncoder, WGPUColor const * color) WGPU_FUNCTION_ATTRIBUTE{
+void wgpuRenderPassEncoderSetBlendConstant       (WGPURenderPassEncoder renderPassEncoder, const WGPUColor* color) WGPU_FUNCTION_ATTRIBUTE{
     RenderPassCommandGeneric insert = {
         .type = rp_command_type_set_blend_constant,
         .setBlendConstant = {

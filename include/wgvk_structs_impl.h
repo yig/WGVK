@@ -1833,6 +1833,8 @@ typedef struct WGPUTextureViewImpl{
 typedef struct DefaultDynamicState{
     VkViewport viewport;
     VkRect2D scissorRect;
+    uint32_t stencilReference;
+    float blendConstants[4];
 }DefaultDynamicState;
 typedef struct CommandBufferAndSomeState{
     VkCommandBuffer buffer;
@@ -1876,15 +1878,20 @@ typedef struct WGPUComputePassEncoderImpl{
 
 static inline size_t hashDynamicState(DefaultDynamicState dst){
     float accum = dst.viewport.x;
-    accum = accum * 1.71421351f + dst.viewport.y;
-    accum = accum * 1.71421351f + dst.viewport.width;
-    accum = accum * 1.71421351f + dst.viewport.height;
-    accum = accum * 1.71421351f + dst.viewport.minDepth;
-    accum = accum * 1.71421351f + dst.viewport.maxDepth;
+    accum = accum * 1.79421351f + dst.blendConstants[0];
+    accum = accum * 1.79421351f + dst.blendConstants[1];
+    accum = accum * 1.79421351f + dst.blendConstants[2];
+    accum = accum * 1.79421351f + dst.blendConstants[3];
+    accum = accum * 1.19421351f + dst.viewport.y;
+    accum = accum * 1.19421351f + dst.viewport.width;
+    accum = accum * 1.19421351f + dst.viewport.height;
+    accum = accum * 1.19421351f + dst.viewport.minDepth;
+    accum = accum * 1.19421351f + dst.viewport.maxDepth;
     size_t ret = dst.scissorRect.extent.width;
     ret = (ret * PHM_HASH_MULTIPLIER) ^ dst.scissorRect.extent.height;
     ret = (ret * PHM_HASH_MULTIPLIER) ^ dst.scissorRect.offset.x;
     ret = (ret * PHM_HASH_MULTIPLIER) ^ dst.scissorRect.offset.y;
+    ret = (ret * PHM_HASH_MULTIPLIER) ^ dst.stencilReference;
     return ret ^ ((size_t)accum);
 }
 static inline size_t cmpDynamicState(DefaultDynamicState a, DefaultDynamicState b){
@@ -1898,7 +1905,12 @@ static inline size_t cmpDynamicState(DefaultDynamicState a, DefaultDynamicState 
     a.scissorRect.offset.x == b.scissorRect.offset.x &&
     a.scissorRect.offset.y == b.scissorRect.offset.y &&
     a.scissorRect.extent.width == b.scissorRect.extent.width &&
-    a.scissorRect.extent.height == b.scissorRect.extent.height;
+    a.scissorRect.extent.height == b.scissorRect.extent.height &&
+    a.blendConstants[0] == b.blendConstants[0] &&
+    a.blendConstants[0] == b.blendConstants[0] &&
+    a.blendConstants[0] == b.blendConstants[0] &&
+    a.blendConstants[0] == b.blendConstants[0] &&
+    a.stencilReference == b.stencilReference;
 }
 DEFINE_GENERIC_HASH_MAP(static inline, DynamicStateCommandBufferMap, DefaultDynamicState, VkCommandBuffer, hashDynamicState, cmpDynamicState, (DefaultDynamicState){0})
 
@@ -3012,12 +3024,12 @@ static inline VkVertexInputRate toVulkanVertexStepMode(WGPUVertexStepMode vsm) {
 }
 static inline VkIndexType toVulkanIndexFormat(WGPUIndexFormat ifmt) {
     switch (ifmt) {
-    case WGPUIndexFormat_Uint16:
-        return VK_INDEX_TYPE_UINT16;
-    case WGPUIndexFormat_Uint32:
-        return VK_INDEX_TYPE_UINT32;
-    default:
-        return VK_INDEX_TYPE_UINT16; // Default fallback
+        case WGPUIndexFormat_Uint16:
+            return VK_INDEX_TYPE_UINT16;
+        case WGPUIndexFormat_Uint32:
+            return VK_INDEX_TYPE_UINT32;
+        default:
+            return VK_INDEX_TYPE_UINT16; // Default fallback
     }
 }
 
