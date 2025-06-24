@@ -71,6 +71,97 @@
 #ifndef assert
     #define assert(...)
 #endif
+
+#if defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#else
+    #include <pthread.h>
+#endif
+
+/* Basic Threading */
+
+typedef struct {
+#if defined(_WIN32)
+    HANDLE handle;
+#else
+    pthread_t id;
+#endif
+} wgvk_thread_t;
+
+typedef void* (*wgvk_thread_func_t)(void*);
+
+int wgvk_thread_create(wgvk_thread_t* thread, wgvk_thread_func_t func, void* arg);
+int wgvk_thread_join  (wgvk_thread_t* thread, void** result);
+int wgvk_thread_detach(wgvk_thread_t* thread);
+
+/* Mutex */
+
+typedef struct {
+#if defined(_WIN32)
+    CRITICAL_SECTION cs;
+#else
+    pthread_mutex_t mutex;
+#endif
+} wgvk_mutex_t;
+
+int wgvk_mutex_init(wgvk_mutex_t* mutex);
+int wgvk_mutex_destroy(wgvk_mutex_t* mutex);
+int wgvk_mutex_lock(wgvk_mutex_t* mutex);
+int wgvk_mutex_unlock(wgvk_mutex_t* mutex);
+
+/* Condition Variable */
+
+typedef struct {
+#if defined(_WIN32)
+    CONDITION_VARIABLE cond;
+#else
+    pthread_cond_t cond;
+#endif
+} wgvk_cond_t;
+
+int wgvk_cond_init(wgvk_cond_t* cond);
+int wgvk_cond_destroy(wgvk_cond_t* cond);
+int wgvk_cond_wait(wgvk_cond_t* cond, wgvk_mutex_t* mutex);
+int wgvk_cond_signal(wgvk_cond_t* cond);
+int wgvk_cond_broadcast(wgvk_cond_t* cond);
+
+/* Thread Pool */
+
+typedef enum {
+    WGVK_JOB_PENDING,
+    WGVK_JOB_RUNNING,
+    WGVK_JOB_COMPLETED
+} wgvk_job_status;
+
+typedef struct wgvk_job_t {
+    wgvk_thread_func_t func;
+    void* arg;
+    void* result;
+    volatile wgvk_job_status status;
+    wgvk_mutex_t status_mutex;
+    wgvk_cond_t status_cond;
+    struct wgvk_job_t* next;
+} wgvk_job_t;
+
+typedef struct {
+    wgvk_thread_t* workers;
+    size_t num_threads;
+    wgvk_job_t* head;
+    wgvk_job_t* tail;
+    wgvk_mutex_t queue_mutex;
+    wgvk_cond_t queue_cond;
+    volatile int stop;
+} wgvk_thread_pool_t;
+
+wgvk_thread_pool_t* wgvk_thread_pool_create(size_t num_threads);
+void wgvk_thread_pool_destroy(wgvk_thread_pool_t* pool);
+wgvk_job_t* wgvk_job_enqueue(wgvk_thread_pool_t* pool, wgvk_thread_func_t func, void* arg);
+int wgvk_job_wait(wgvk_job_t* job, void** result);
+void wgvk_job_destroy(wgvk_job_t* job);
+
+
+
 // ================================
 //    PTR HASH MAP IMPLEMENTAION
 // ================================
@@ -1466,6 +1557,7 @@ typedef struct WGPUBufferImpl{
     WGPUDevice device;
     uint32_t cacheIndex;
     WGPUBufferUsage usage;
+    WGPUBufferMapState mapState;
     size_t capacity;
     AllocationType allocationType;
     union{
@@ -1563,6 +1655,7 @@ typedef struct WGPUDeviceImpl{
     RenderPassCache renderPassCache;
     WGPUUncapturedErrorCallbackInfo uncapturedErrorCallbackInfo;
     FenceCache fenceCache;
+    wgvk_thread_pool_t thread_pool;
     struct VolkDeviceTable functions;
 }WGPUDeviceImpl;
 
@@ -1924,6 +2017,7 @@ typedef struct WGPUQueueImpl{
 
 typedef struct WGPUQuerySetImpl{
     VkQueryPool queryPool;
+    WGPUQueryType type;
     refcount_type refCount;
     WGPUDevice device;
 }WGPUQuerySetImpl;

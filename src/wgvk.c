@@ -29,9 +29,13 @@
 #ifndef zeroinit
 #define zeroinit = {0}
 #endif
-//#include "vulkan/vulkan_core.h"
-#include <inttypes.h>
 
+#ifdef _WIN32
+    #define SUPPORT_WIN32_SURFACE 1
+#endif
+#if SUPPORT_XLIB_SURFACE == 1
+    #define VK_KHR_xlib_surface
+#endif
 #if SUPPORT_WAYLAND_SURFACE == 1
     #define VK_KHR_wayland_surface 1 // Define set to 1 for clarity
 #endif
@@ -84,18 +88,13 @@
     #include <vulkan/vulkan_metal.h>
 #endif
 #include <external/volk.h>
-
+#include <inttypes.h>
 #define Font rlFont
 #define Matrix rlMatrix
 #include <wgvk_structs_impl.h>
-//#include <enum_translation.h>
 #if SUPPORT_WGSL == 1
 #include <tint_c_api.h>
 #endif
-//#include "vulkan_internals.hpp"
-//#include <raygpu.h>
-#undef Font
-#undef Matrix
 
 #ifndef STRVIEW
     #define STRVIEW(X) (WGPUStringView){X, sizeof(X) - 1}
@@ -105,16 +104,13 @@
 #include <wgvk.h>
 #include <external/VmaUsage.h>
 #include <stdarg.h>
+#include <wgvk_structs_impl.h>
 
 static void DeviceCallback(WGPUDevice device, WGPUErrorType type, WGPUStringView msg){
     if(device->uncapturedErrorCallbackInfo.callback){
         device->uncapturedErrorCallbackInfo.callback(&device, type, msg, device->uncapturedErrorCallbackInfo.userdata1, device->uncapturedErrorCallbackInfo.userdata2);
     }
 }
-
-// WGPU struct implementations
-
-#include <wgvk_structs_impl.h>
 
 #ifdef TRACELOG
     #undef TRACELOG
@@ -1384,6 +1380,7 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor*
     wgpuBuffer->refCount = 1;
     wgpuBuffer->usage = desc->usage;
     
+    
     VkBufferCreateInfo bufferDesc zeroinit;
     bufferDesc.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferDesc.size = desc->size;
@@ -1428,10 +1425,15 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor*
     wgpuBuffer->memoryProperties = propertyToFind;
 
     if(desc->usage & WGPUBufferUsage_ShaderDeviceAddress){
-        VkBufferDeviceAddressInfo bdai zeroinit;
-        bdai.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR;
-        bdai.buffer = wgpuBuffer->buffer;
+        const VkBufferDeviceAddressInfo bdai = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR,
+            .buffer = wgpuBuffer->buffer
+        };
         wgpuBuffer->address = device->functions.vkGetBufferDeviceAddress(device->device, &bdai);
+    }
+    if(desc->mappedAtCreation){
+        // TODO
+        // wgpuBufferMap(wgpuBuffer);
     }
     return wgpuBuffer;
 }
@@ -5903,7 +5905,7 @@ void wgpuBufferDestroy(WGPUBuffer buffer) {}
 void const * wgpuBufferGetConstMappedRange(WGPUBuffer buffer, size_t offset, size_t size) { return NULL; }
 void * wgpuBufferGetMappedRange(WGPUBuffer buffer, size_t offset, size_t size) { return NULL; }
 WGPUBufferMapState wgpuBufferGetMapState(WGPUBuffer buffer) { return WGPUBufferMapState_Unmapped; }
-WGPUBufferUsage wgpuBufferGetUsage(WGPUBuffer buffer) { return WGPUBufferUsage_None; }
+WGPUBufferUsage wgpuBufferGetUsage(WGPUBuffer buffer) { return buffer->usage; }
 WGPUStatus wgpuBufferReadMappedRange(WGPUBuffer buffer, size_t offset, void * data, size_t size) { return WGPUStatus_Error; }
 void wgpuBufferSetLabel(WGPUBuffer buffer, WGPUStringView label) {}
 WGPUStatus wgpuBufferWriteMappedRange(WGPUBuffer buffer, size_t offset, const void* data, size_t size) { return WGPUStatus_Error; }
@@ -5917,10 +5919,32 @@ void wgpuCommandEncoderClearBuffer(WGPUCommandEncoder commandEncoder, WGPUBuffer
 void wgpuCommandEncoderInsertDebugMarker(WGPUCommandEncoder commandEncoder, WGPUStringView markerLabel) {}
 void wgpuCommandEncoderPopDebugGroup(WGPUCommandEncoder commandEncoder) {}
 void wgpuCommandEncoderPushDebugGroup(WGPUCommandEncoder commandEncoder, WGPUStringView groupLabel) {}
-void wgpuCommandEncoderResolveQuerySet(WGPUCommandEncoder commandEncoder, WGPUQuerySet querySet, uint32_t firstQuery, uint32_t queryCount, WGPUBuffer destination, uint64_t destinationOffset) {}
+void wgpuCommandEncoderResolveQuerySet(WGPUCommandEncoder commandEncoder, WGPUQuerySet querySet, uint32_t firstQuery, uint32_t queryCount, WGPUBuffer destination, uint64_t destinationOffset) {
+    const BufferUsageSnap usage = {
+        .access = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .stage = VK_PIPELINE_STAGE_TRANSFER_BIT
+    };
+    ce_trackBuffer(commandEncoder, destination, usage);
+    ru_trackQuerySet(&commandEncoder->resourceUsage, querySet);
+    commandEncoder->device->functions.vkCmdCopyQueryPoolResults(
+        commandEncoder->buffer,
+        querySet->queryPool,
+        firstQuery,
+        queryCount, 
+        destination->buffer,
+        destinationOffset,
+        8,
+        VK_QUERY_RESULT_WAIT_BIT | VK_QUERY_RESULT_64_BIT
+    );
+}
 void wgpuCommandEncoderSetLabel(WGPUCommandEncoder commandEncoder, WGPUStringView label) {}
-void wgpuCommandEncoderWriteTimestamp(WGPUCommandEncoder commandEncoder, WGPUQuerySet querySet, uint32_t queryIndex) {}
-void wgpuCommandEncoderAddRef(WGPUCommandEncoder commandEncoder) {}
+void wgpuCommandEncoderWriteTimestamp(WGPUCommandEncoder commandEncoder, WGPUQuerySet querySet, uint32_t queryIndex) {
+    ru_trackQuerySet(&commandEncoder->resourceUsage, querySet);
+    commandEncoder->device->functions.vkCmdWriteTimestamp(commandEncoder->buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, querySet->queryPool, queryIndex);
+}
+void wgpuCommandEncoderAddRef(WGPUCommandEncoder commandEncoder) {
+    
+}
 
 // Stubs for missing Methods of ComputePassEncoder
 void wgpuComputePassEncoderDispatchWorkgroupsIndirect(WGPUComputePassEncoder computePassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) {
@@ -5948,6 +5972,7 @@ WGPUFuture wgpuDeviceCreateComputePipelineAsync(WGPUDevice device, WGPUComputePi
 WGPUQuerySet wgpuDeviceCreateQuerySet(WGPUDevice device, const WGPUQuerySetDescriptor* descriptor) {
     WGPUQuerySet ret = RL_CALLOC(1, sizeof(WGPUQuerySetImpl));
     ret->device = device;
+    ret->type = descriptor->type;
     struct VolkDeviceTable* functions = &device->functions;
     VkQueryPoolCreateInfo qpci = {
         .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
@@ -5982,7 +6007,7 @@ void wgpuPipelineLayoutSetLabel(WGPUPipelineLayout pipelineLayout, WGPUStringVie
 // Stubs for missing Methods of QuerySet
 void wgpuQuerySetDestroy(WGPUQuerySet querySet) {}
 uint32_t wgpuQuerySetGetCount(WGPUQuerySet querySet) { return 0; }
-WGPUQueryType wgpuQuerySetGetType(WGPUQuerySet querySet) { return (WGPUQueryType)0; }
+WGPUQueryType wgpuQuerySetGetType(WGPUQuerySet querySet) { return querySet->type; }
 void wgpuQuerySetSetLabel(WGPUQuerySet querySet, WGPUStringView label) {}
 void wgpuQuerySetAddRef(WGPUQuerySet querySet) {}
 void wgpuQuerySetRelease(WGPUQuerySet querySet) {}
@@ -6441,6 +6466,257 @@ RGAPI void wgvkAllocator_free(const wgvkAllocation* allocation) {
     wgvkDeviceMemoryPool_free(allocation);
 }
 
+// =============================================================================
+// Threads implementation
+// =============================================================================
+
+#include <stdlib.h>
+#include <stdint.h>
+
+/* Basic Threading */
+
+#if defined(_WIN32)
+int wgvk_thread_create(wgvk_thread_t* thread, wgvk_thread_func_t func, void* arg) {
+    thread->handle = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)func, arg, 0, NULL);
+    return thread->handle == NULL ? -1 : 0;
+}
+
+int wgvk_thread_join(wgvk_thread_t* thread, void** result) {
+    if (WaitForSingleObject(thread->handle, INFINITE) != WAIT_OBJECT_0) return -1;
+    if (result) {
+        DWORD exit_code;
+        if (!GetExitCodeThread(thread->handle, &exit_code)) {
+            CloseHandle(thread->handle);
+            return -1;
+        }
+        *result = (void*)(uintptr_t)exit_code;
+    }
+    CloseHandle(thread->handle);
+    return 0;
+}
+
+int wgvk_thread_detach(wgvk_thread_t* thread) {
+    return CloseHandle(thread->handle) ? 0 : -1;
+}
+#else
+int wgvk_thread_create(wgvk_thread_t* thread, wgvk_thread_func_t func, void* arg) {
+    return pthread_create(&thread->id, NULL, func, arg);
+}
+
+int wgvk_thread_join(wgvk_thread_t* thread, void** result) {
+    return pthread_join(thread->id, result);
+}
+
+int wgvk_thread_detach(wgvk_thread_t* thread) {
+    return pthread_detach(thread->id);
+}
+#endif
+
+/* Mutex */
+
+#if defined(_WIN32)
+int wgvk_mutex_init(wgvk_mutex_t* mutex) {
+    InitializeCriticalSection(&mutex->cs);
+    return 0;
+}
+
+int wgvk_mutex_destroy(wgvk_mutex_t* mutex) {
+    DeleteCriticalSection(&mutex->cs);
+    return 0;
+}
+
+int wgvk_mutex_lock(wgvk_mutex_t* mutex) {
+    EnterCriticalSection(&mutex->cs);
+    return 0;
+}
+
+int wgvk_mutex_unlock(wgvk_mutex_t* mutex) {
+    LeaveCriticalSection(&mutex->cs);
+    return 0;
+}
+#else
+int wgvk_mutex_init(wgvk_mutex_t* mutex) {
+    return pthread_mutex_init(&mutex->mutex, NULL);
+}
+
+int wgvk_mutex_destroy(wgvk_mutex_t* mutex) {
+    return pthread_mutex_destroy(&mutex->mutex);
+}
+
+int wgvk_mutex_lock(wgvk_mutex_t* mutex) {
+    return pthread_mutex_lock(&mutex->mutex);
+}
+
+int wgvk_mutex_unlock(wgvk_mutex_t* mutex) {
+    return pthread_mutex_unlock(&mutex->mutex);
+}
+#endif
+
+/* Condition Variable */
+
+#if defined(_WIN32)
+int wgvk_cond_init(wgvk_cond_t* cond) {
+    InitializeConditionVariable(&cond->cond);
+    return 0;
+}
+
+int wgvk_cond_destroy(wgvk_cond_t* cond) {
+    (void)cond;
+    return 0;
+}
+
+int wgvk_cond_wait(wgvk_cond_t* cond, wgvk_mutex_t* mutex) {
+    return SleepConditionVariableCS(&cond->cond, &mutex->cs, INFINITE) ? 0 : -1;
+}
+
+int wgvk_cond_signal(wgvk_cond_t* cond) {
+    WakeConditionVariable(&cond->cond);
+    return 0;
+}
+
+int wgvk_cond_broadcast(wgvk_cond_t* cond) {
+    WakeAllConditionVariable(&cond->cond);
+    return 0;
+}
+#else
+int wgvk_cond_init(wgvk_cond_t* cond) {
+    return pthread_cond_init(&cond->cond, NULL);
+}
+
+int wgvk_cond_destroy(wgvk_cond_t* cond) {
+    return pthread_cond_destroy(&cond->cond);
+}
+
+int wgvk_cond_wait(wgvk_cond_t* cond, wgvk_mutex_t* mutex) {
+    return pthread_cond_wait(&cond->cond, &mutex->mutex);
+}
+
+int wgvk_cond_signal(wgvk_cond_t* cond) {
+    return pthread_cond_signal(&cond->cond);
+}
+
+int wgvk_cond_broadcast(wgvk_cond_t* cond) {
+    return pthread_cond_broadcast(&cond->cond);
+}
+#endif
+
+/* Thread Pool */
+
+static void* wgvk_thread_pool_worker(void* arg) {
+    wgvk_thread_pool_t* pool = (wgvk_thread_pool_t*)arg;
+    while (1) {
+        wgvk_mutex_lock(&pool->queue_mutex);
+        while (pool->head == NULL && !pool->stop) {
+            wgvk_cond_wait(&pool->queue_cond, &pool->queue_mutex);
+        }
+        if (pool->stop && pool->head == NULL) {
+            wgvk_mutex_unlock(&pool->queue_mutex);
+            break;
+        }
+        wgvk_job_t* job = pool->head;
+        pool->head = pool->head->next;
+        if (pool->head == NULL) pool->tail = NULL;
+        wgvk_mutex_unlock(&pool->queue_mutex);
+
+        wgvk_mutex_lock(&job->status_mutex);
+        job->status = WGVK_JOB_RUNNING;
+        wgvk_mutex_unlock(&job->status_mutex);
+
+        job->result = job->func(job->arg);
+
+        wgvk_mutex_lock(&job->status_mutex);
+        job->status = WGVK_JOB_COMPLETED;
+        wgvk_cond_signal(&job->status_cond);
+        wgvk_mutex_unlock(&job->status_mutex);
+    }
+    return NULL;
+}
+
+wgvk_thread_pool_t* wgvk_thread_pool_create(size_t num_threads) {
+    wgvk_thread_pool_t* pool = (wgvk_thread_pool_t*)malloc(sizeof(wgvk_thread_pool_t));
+    if (!pool) return NULL;
+    pool->num_threads = num_threads;
+    pool->workers = (wgvk_thread_t*)malloc(sizeof(wgvk_thread_t) * num_threads);
+    if (!pool->workers) { free(pool); return NULL; }
+
+    pool->head = NULL;
+    pool->tail = NULL;
+    pool->stop = 0;
+
+    wgvk_mutex_init(&pool->queue_mutex);
+    wgvk_cond_init(&pool->queue_cond);
+
+    for (size_t i = 0; i < num_threads; ++i) {
+        wgvk_thread_create(&pool->workers[i], wgvk_thread_pool_worker, pool);
+    }
+    return pool;
+}
+
+void wgvk_thread_pool_destroy(wgvk_thread_pool_t* pool) {
+    wgvk_mutex_lock(&pool->queue_mutex);
+    pool->stop = 1;
+    wgvk_cond_broadcast(&pool->queue_cond);
+    wgvk_mutex_unlock(&pool->queue_mutex);
+
+    for (size_t i = 0; i < pool->num_threads; ++i) {
+        wgvk_thread_join(&pool->workers[i], NULL);
+    }
+
+    while (pool->head) {
+        wgvk_job_t* temp = pool->head;
+        pool->head = pool->head->next;
+        wgvk_job_destroy(temp);
+    }
+
+    wgvk_mutex_destroy(&pool->queue_mutex);
+    wgvk_cond_destroy(&pool->queue_cond);
+    free(pool->workers);
+    free(pool);
+}
+
+wgvk_job_t* wgvk_job_enqueue(wgvk_thread_pool_t* pool, wgvk_thread_func_t func, void* arg) {
+    wgvk_job_t* job = (wgvk_job_t*)malloc(sizeof(wgvk_job_t));
+    if (!job) return NULL;
+
+    job->func = func;
+    job->arg = arg;
+    job->result = NULL;
+    job->status = WGVK_JOB_PENDING;
+    job->next = NULL;
+    wgvk_mutex_init(&job->status_mutex);
+    wgvk_cond_init(&job->status_cond);
+    
+    wgvk_mutex_lock(&pool->queue_mutex);
+    if (pool->tail) {
+        pool->tail->next = job;
+    } else {
+        pool->head = job;
+    }
+    pool->tail = job;
+    wgvk_cond_signal(&pool->queue_cond);
+    wgvk_mutex_unlock(&pool->queue_mutex);
+
+    return job;
+}
+
+int wgvk_job_wait(wgvk_job_t* job, void** result) {
+    wgvk_mutex_lock(&job->status_mutex);
+    while (job->status != WGVK_JOB_COMPLETED) {
+        wgvk_cond_wait(&job->status_cond, &job->status_mutex);
+    }
+    if (result) {
+        *result = job->result;
+    }
+    wgvk_mutex_unlock(&job->status_mutex);
+    return 0;
+}
+
+void wgvk_job_destroy(wgvk_job_t* job) {
+    if (!job) return;
+    wgvk_mutex_destroy(&job->status_mutex);
+    wgvk_cond_destroy(&job->status_cond);
+    free(job);
+}
 
 
 
