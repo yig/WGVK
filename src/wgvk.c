@@ -34,7 +34,7 @@
     #define SUPPORT_WIN32_SURFACE 1
 #endif
 #if SUPPORT_XLIB_SURFACE == 1
-    #define VK_KHR_xlib_surface
+    #define VK_KHR_xlib_surface 1
 #endif
 #if SUPPORT_WAYLAND_SURFACE == 1
     #define VK_KHR_wayland_surface 1 // Define set to 1 for clarity
@@ -797,6 +797,10 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
             }
         }
         // TODO: Handle other potential structs in nextInChain if necessary
+    }
+    else {
+        nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_KHRONOS_validation";
+        ++requestedAvailableLayerCount;
     }
     VkValidationFeaturesEXT validationFeatures zeroinit;
     VkValidationFeatureEnableEXT enables[] = {
@@ -2895,10 +2899,10 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                 (float)setBlendConstant->color.b,
                 (float)setBlendConstant->color.a,
             };
-            device->functions.vkCmdSetBlendConstants(
-                destination,
-                buffer
-            );
+            //device->functions.vkCmdSetBlendConstants(
+            //    destination,
+            //    buffer
+            //);
         }
         break;
         case rp_command_type_set_viewport:{
@@ -3756,7 +3760,7 @@ void wgpuSamplerRelease(WGPUSampler sampler){
     }
 }
 void wgpuRenderPipelineRelease(WGPURenderPipeline pipeline){
-    if(!--pipeline->refCount){
+    if(--pipeline->refCount == 0){
         wgpuPipelineLayoutRelease(pipeline->layout);
         pipeline->device->functions.vkDestroyPipeline(pipeline->device->device, pipeline->renderPipeline, NULL);
         RL_FREE(pipeline);
@@ -4245,6 +4249,7 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
 
 
     WGPURenderPipeline pipelineImpl = (WGPURenderPipeline)RL_CALLOC(1, sizeof(WGPURenderPipelineImpl));
+    pipelineImpl->refCount = 1;
     if (!pipelineImpl) {
         // Handle allocation failure
         return NULL;
@@ -4294,8 +4299,9 @@ void wgpuTextureViewRelease(WGPUTextureView view){
     --view->refCount;
     if(view->refCount == 0){
         wgpuTextureRelease(view->texture);
-        //view->texture->device->functions.vkDestroyImageView(view->texture->device->device, view->view, NULL);
-        //RL_FREE(view);
+        // This is commented out because views get cached in WGPUTexture
+        // view->texture->device->functions.vkDestroyImageView(view->texture->device->device, view->view, NULL);
+        // RL_FREE(view);
     }
 }
 
@@ -4528,7 +4534,7 @@ void wgpuRenderPassEncoderDraw(WGPURenderPassEncoder rpe, uint32_t vertices, uin
 }
 
 // Implementation of RenderpassEncoderDrawIndexed
-void wgpuRenderpassEncoderDrawIndexed(WGPURenderPassEncoder rpe, uint32_t indices, uint32_t instances, uint32_t firstindex, int32_t baseVertex, uint32_t firstinstance) {
+void wgpuRenderPassEncoderDrawIndexed(WGPURenderPassEncoder rpe, uint32_t indices, uint32_t instances, uint32_t firstindex, int32_t baseVertex, uint32_t firstinstance) {
     wgvk_assert(rpe != NULL, "RenderPassEncoderHandle is null");
 
     RenderPassCommandGeneric insert = {
@@ -4913,7 +4919,7 @@ WGPUSampler wgpuDeviceCreateSampler(WGPUDevice device, const WGPUSamplerDescript
     VkResult result = device->functions.vkCreateSampler(device->device, &sci, NULL, &(ret->sampler));
     return ret;
 }
-void wgpuRenderPassEncoderSetVertexBuffer(WGPURenderPassEncoder rpe, uint32_t binding, WGPUBuffer buffer, VkDeviceSize offset) {
+void wgpuRenderPassEncoderSetVertexBuffer(WGPURenderPassEncoder rpe, uint32_t binding, WGPUBuffer buffer, VkDeviceSize offset, uint64_t size) {
     wgvk_assert(rpe != NULL, "RenderPassEncoderHandle is null");
     wgvk_assert(buffer != NULL, "BufferHandle is null");
     RenderPassCommandGeneric insert = {
@@ -4927,7 +4933,7 @@ void wgpuRenderPassEncoderSetVertexBuffer(WGPURenderPassEncoder rpe, uint32_t bi
 
     RenderPassEncoder_PushCommand(rpe, &insert);
     
-    ce_trackBuffer(rpe->cmdEncoder, buffer, (BufferUsageSnap){VK_PIPELINE_STAGE_VERTEX_INPUT_BIT    , VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT});
+    ce_trackBuffer(rpe->cmdEncoder, buffer, (BufferUsageSnap){VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT});
 }
 
 void wgpuRenderPassEncoderExecuteBundles(WGPURenderPassEncoder renderPassEncoder, size_t bundleCount, const WGPURenderBundle* bundles) WGPU_FUNCTION_ATTRIBUTE{
@@ -4993,7 +4999,7 @@ void wgpuRenderPassEncoderSetScissorRect         (WGPURenderPassEncoder renderPa
     RenderPassEncoder_PushCommand(renderPassEncoder, &insert);
 }
 
-void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder rpe, WGPUBuffer buffer, VkDeviceSize offset, WGPUIndexFormat indexType){
+void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder rpe, WGPUBuffer buffer, WGPUIndexFormat format, uint64_t offset, uint64_t size) {
     wgvk_assert(rpe != NULL, "RenderPassEncoderHandle is null");
     wgvk_assert(buffer != NULL, "BufferHandle is null");
 
@@ -5001,7 +5007,7 @@ void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder rpe, WGPUBuffer b
         .type = rp_command_type_set_index_buffer,
         .setIndexBuffer = {
             .buffer = buffer,
-            .format = indexType,
+            .format = format,
             .offset = offset,
             .size = buffer->capacity
         }

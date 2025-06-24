@@ -1716,14 +1716,14 @@ void wgpuCommandEncoderCopyBufferToTexture           (WGPUCommandEncoder command
 void wgpuCommandEncoderCopyTextureToBuffer           (WGPUCommandEncoder commandEncoder, const WGPUTexelCopyTextureInfo* source, const WGPUTexelCopyBufferInfo* destination, const WGPUExtent3D* copySize);
 void wgpuCommandEncoderCopyTextureToTexture          (WGPUCommandEncoder commandEncoder, const WGPUTexelCopyTextureInfo* source, const WGPUTexelCopyTextureInfo* destination, const WGPUExtent3D* copySize);
 void wgpuRenderPassEncoderDraw                       (WGPURenderPassEncoder rpenc, uint32_t vertices, uint32_t instances, uint32_t firstvertex, uint32_t firstinstance);
-void wgpuRenderpassEncoderDrawIndexed                (WGPURenderPassEncoder rpenc, uint32_t indices, uint32_t instances, uint32_t firstindex, int32_t basevertex, uint32_t firstinstance);
+void wgpuRenderPassEncoderDrawIndexed                (WGPURenderPassEncoder rpenc, uint32_t indices, uint32_t instances, uint32_t firstindex, int32_t basevertex, uint32_t firstinstance);
 void wgpuRenderPassEncoderSetBindGroup               (WGPURenderPassEncoder rpenc, uint32_t groupIndex, WGPUBindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets);
 void wgpuRenderPassEncoderSetPipeline                (WGPURenderPassEncoder rpenc, WGPURenderPipeline renderPipeline);
 void wgpuRenderPassEncoderEnd                        (WGPURenderPassEncoder rrpenc);
 void wgpuRenderPassEncoderRelease                    (WGPURenderPassEncoder rpenc);
 void wgpuRenderPassEncoderAddRef                     (WGPURenderPassEncoder rpenc);
-void wgpuRenderPassEncoderSetIndexBuffer             (WGPURenderPassEncoder rpe, WGPUBuffer buffer, size_t offset, WGPUIndexFormat indexType);
-void wgpuRenderPassEncoderSetVertexBuffer            (WGPURenderPassEncoder rpe, uint32_t binding, WGPUBuffer buffer, size_t offset);
+void wgpuRenderPassEncoderSetIndexBuffer             (WGPURenderPassEncoder renderPassEncoder, WGPUBuffer buffer, WGPUIndexFormat format, uint64_t offset, uint64_t size) WGPU_FUNCTION_ATTRIBUTE;
+void wgpuRenderPassEncoderSetVertexBuffer            (WGPURenderPassEncoder rpe, uint32_t binding, WGPUBuffer buffer, size_t offset, uint64_t size);
 void wgpuRenderPassEncoderDrawIndexedIndirect        (WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) WGPU_FUNCTION_ATTRIBUTE;
 void wgpuRenderPassEncoderDrawIndirect               (WGPURenderPassEncoder renderPassEncoder, WGPUBuffer indirectBuffer, uint64_t indirectOffset) WGPU_FUNCTION_ATTRIBUTE;
 void wgpuRenderPassEncoderSetBlendConstant           (WGPURenderPassEncoder renderPassEncoder, WGPUColor const * color) WGPU_FUNCTION_ATTRIBUTE;

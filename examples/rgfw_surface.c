@@ -307,7 +307,7 @@ int main(){
         });
         //wgpuRenderPassEncoderSetScissorRect(rpenc, 0, 0, (frameCount / 8) % 1000, height);
         wgpuRenderPassEncoderSetPipeline(rpenc, rp);
-        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0);
+        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
         //wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
         wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
         wgpuRenderPassEncoderEnd(rpenc);
