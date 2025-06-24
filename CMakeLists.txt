@@ -68,7 +68,7 @@ if(WGVK_BUILD_WGSL_SUPPORT)
     add_library(${WGVK_PRIMARY_TARGET_NAME} STATIC ${WGVK_CORE_SRC_LIST})
     # Add all properties as PUBLIC. This means they are used to build wgvk_core itself,
     # and they are part of its public interface to be inherited by consumers.
-    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
+    target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 SUPPORT_WGSL=1 WGVK_DISABLE_ASSERT=1)
     target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
 
     set(DAWN_ENABLE_DESKTOP_GL OFF)
@@ -86,6 +86,7 @@ if(WGVK_BUILD_WGSL_SUPPORT)
     set(TINT_BUILD_WGSL_WRITER OFF)
     set(TINT_BUILD_TESTS OFF)
     set(TINT_BUILD_GLSL_VALIDATOR OFF)
+    set(TINT_ENABLE_IR_VALIDATION OFF)
     FetchContent_Declare(
         dawn
         URL https://github.com/manuel5975p/dawn_monorepo/archive/refs/tags/v7252.tar.gz
@@ -169,7 +170,7 @@ if(WGVK_BUILD_EXAMPLES)
     # Examples always link against the final `wgvk` target. Thanks to the fix above,
     # they will now correctly inherit all necessary compile definitions.
     target_link_libraries(glfw_surface PUBLIC wgvk glfw)
+    target_link_libraries(basic_wgsl_shader PUBLIC wgvk glfw)
     target_link_libraries(basic_compute PUBLIC wgvk)
     target_link_libraries(rgfw_surface PUBLIC wgvk)
-    target_link_libraries(basic_wgsl_shader PUBLIC wgvk)
 endif()

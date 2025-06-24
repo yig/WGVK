@@ -2793,7 +2793,7 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
 
     const VkRenderingInfo info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-        .flags = 0,//VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
+        //.flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
         .colorAttachmentCount = beginInfo->colorAttachmentCount,
         .pColorAttachments = colorAttachments,
         .pDepthAttachment = beginInfo->depthAttachmentPresent ? &(const VkRenderingAttachmentInfo){
