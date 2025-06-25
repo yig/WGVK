@@ -1601,7 +1601,6 @@ void wgpuQueueWriteTexture(WGPUQueue queue, const WGPUTexelCopyTextureInfo* dest
     wgpuQueueSubmit(queue, 1, &puffer);
     wgpuCommandEncoderRelease(enkoder);
     wgpuCommandBufferRelease(puffer);
-
     wgpuBufferRelease(stagingBuffer);
 }
 
@@ -2793,7 +2792,7 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
 
     const VkRenderingInfo info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-        //.flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
+        .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
         .colorAttachmentCount = beginInfo->colorAttachmentCount,
         .pColorAttachments = colorAttachments,
         .pDepthAttachment = beginInfo->depthAttachmentPresent ? &(const VkRenderingAttachmentInfo){
@@ -2865,7 +2864,6 @@ WGPUCommandBuffer wgpuCommandEncoderFinish(WGPUCommandEncoder commandEncoder, co
 void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCommandGeneric* command, const RenderPassCommandBegin *beginInfo){
     VkCommandBuffer destination = destination_->buffer;
     WGPUDevice device = destination_->device;
-    VkDrawIndexedIndirectCommand a;
     switch(command->type){
         case rp_command_type_draw_indexed_indirect:{
             const RenderPassCommandDrawIndexedIndirect* drawIndexedIndirect = &command->drawIndexedIndirect;

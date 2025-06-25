@@ -53,16 +53,18 @@ int main(){
         .attributes = &vbAttribute,
         .stepMode = WGPUVertexStepMode_Vertex
     };
+
+
     WGPUBlendState blendState = {
         .alpha = {
-            .operation = WGPUBlendOperation_Add,
             .srcFactor = WGPUBlendFactor_One,
-            .dstFactor = WGPUBlendFactor_One
+            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+            .operation = WGPUBlendOperation_Add,
         },
         .color = {
-            .operation = WGPUBlendOperation_Add,
-            .srcFactor = WGPUBlendFactor_One,
-            .dstFactor = WGPUBlendFactor_One
+            .srcFactor = WGPUBlendFactor_SrcAlpha,
+            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+            .operation = WGPUBlendOperation_Add
         }
     };
 
@@ -80,14 +82,15 @@ int main(){
         .targetCount = 1,
         .targets = &colorTargetState
     };
-        WGPUBindGroupLayoutEntry layoutEntries[2] = {
-        [0] = {
+
+    WGPUBindGroupLayoutEntry layoutEntries[2] = {
+        {
             .binding = 0,
             .texture.sampleType = WGPUTextureSampleType_Float,
             .texture.multisampled = 0,
             .texture.viewDimension = WGPUTextureViewDimension_2D
         },
-        [1] = {
+        {
             .binding = 1,
             .sampler.type = WGPUSamplerBindingType_Filtering,
         }
@@ -180,15 +183,29 @@ int main(){
     };
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDescriptor);
 
-    const float scale = 0.2f;
-    const float vertices[6] = {-scale,-scale,-scale,scale,scale,scale};
+    const float scale = 0.5f;
+    const float vertices[8] = {
+        -scale,-scale, 
+        -scale, scale,
+         scale, scale,
+         scale,-scale,
+    };
+    const uint32_t indices[6] = {
+        0,1,2,0,2,3
+    };
     
     WGPUBufferDescriptor bufferDescriptor = {
         .size = sizeof(vertices),
         .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst
     };
+    WGPUBufferDescriptor indexBufferDescriptor = {
+        .size = sizeof(indices),
+        .usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst
+    };
     WGPUBuffer vertexBuffer = wgpuDeviceCreateBuffer(device, &bufferDescriptor);
+    WGPUBuffer indexBuffer = wgpuDeviceCreateBuffer(device, &indexBufferDescriptor);
     wgpuQueueWriteBuffer(base.queue, vertexBuffer, 0, vertices, sizeof(vertices));
+    wgpuQueueWriteBuffer(base.queue, indexBuffer, 0, indices, sizeof(indices));
     uint8_t* textureData = calloc(tdesc.size.width * tdesc.size.height, 4);
     for(size_t i = 0;i < tdesc.size.width * tdesc.size.height * 4;i++){
         textureData[i] = (i * 77u) & 255;
@@ -211,14 +228,16 @@ int main(){
     });
     WGPUSurfaceTexture surfaceTexture;
     int width, height;
+    float t = 0;
     while(!glfwWindowShouldClose(base.window)){
         glfwPollEvents();
+        t += 0.01f;
         wgpuSurfaceGetCurrentTexture(base.surface, &surfaceTexture);
         if(surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal){
             glfwGetWindowSize(base.window, &width, &height);
             wgpuSurfaceConfigure(base.surface, &(const WGPUSurfaceConfiguration){
                 .alphaMode = WGPUCompositeAlphaMode_Opaque,
-                .presentMode = WGPUPresentMode_Fifo,
+                .presentMode = WGPUPresentMode_Mailbox,
                 .device = device,
                 .format = WGPUTextureFormat_BGRA8Unorm,
                 .width = width,
@@ -248,11 +267,23 @@ int main(){
             .colorAttachmentCount = 1,
             .colorAttachments = &colorAttachment,
         });
-        //wgpuRenderPassEncoderSetScissorRect(rpenc, 0, 0, width, height);
+
+        WGPUBuffer adhocbuffer = wgpuDeviceCreateBuffer(device, &bufferDescriptor);
+        
+        float adhocVertices[8] = {
+            scale * 1.5 * sin(t             ), scale * 1.5 * cos(t             ),
+            scale * 1.5 * sin(t + M_PI_2    ), scale * 1.5 * cos(t + M_PI_2    ),
+            scale * 1.5 * sin(t + 2 * M_PI_2), scale * 1.5 * cos(t + 2 * M_PI_2),
+            scale * 1.5 * sin(t + 3 * M_PI_2), scale * 1.5 * cos(t + 3 * M_PI_2)
+        };
+        wgpuQueueWriteBuffer(base.queue, adhocbuffer, 0, adhocVertices, sizeof(adhocVertices));
         wgpuRenderPassEncoderSetPipeline(rpenc, rp);
         wgpuRenderPassEncoderSetBindGroup(rpenc, 0, bindGroup, 0, NULL);
+        wgpuRenderPassEncoderSetIndexBuffer(rpenc, indexBuffer, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, adhocbuffer, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderDrawIndexed(rpenc, 6, 1, 0, 0, 0);
         wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
+        wgpuRenderPassEncoderDrawIndexed(rpenc, 6, 1, 0, 0, 0);
         wgpuRenderPassEncoderEnd(rpenc);
         WGPUCommandBuffer cbuffer = wgpuCommandEncoderFinish(cenc, NULL);
 
@@ -261,6 +292,7 @@ int main(){
         wgpuCommandBufferRelease(cbuffer);
         wgpuRenderPassEncoderRelease(rpenc);
         wgpuTextureViewRelease(surfaceView);
+        wgpuBufferRelease(adhocbuffer);
         wgpuSurfacePresent(base.surface);
     }
 }
