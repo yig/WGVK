@@ -1233,6 +1233,7 @@ typedef struct WGPUTextureDescriptor{
     uint32_t mipLevelCount;
     uint32_t sampleCount;
     size_t viewFormatCount;
+    const WGPUTextureFormat* viewFormats;
 }WGPUTextureDescriptor;
 
 typedef struct WGPUTextureViewDescriptor{
