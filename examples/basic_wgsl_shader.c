@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 const char wgslSource[] = R"(
+override red = 1.0f;
 struct VertexInput {
     @location(0) position: vec2f
 };
@@ -20,7 +21,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return textureSample(colDiffuse, grsampler, in.position.xy * 0.01f);
+    return textureSample(colDiffuse, grsampler, in.position.xy * 0.01f) + vec4f(red,0.0f,0.0f,0.0f);
 }
 )";
 int main(){
@@ -237,7 +238,7 @@ int main(){
             glfwGetWindowSize(base.window, &width, &height);
             wgpuSurfaceConfigure(base.surface, &(const WGPUSurfaceConfiguration){
                 .alphaMode = WGPUCompositeAlphaMode_Opaque,
-                .presentMode = WGPUPresentMode_Mailbox,
+                .presentMode = WGPUPresentMode_Fifo,
                 .device = device,
                 .format = WGPUTextureFormat_BGRA8Unorm,
                 .width = width,

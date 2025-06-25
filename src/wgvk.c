@@ -2792,7 +2792,7 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
 
     const VkRenderingInfo info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-        .flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT,
+        //.flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT | VK_RENDERING_CONTENTS_INLINE_BIT_KHR,
         .colorAttachmentCount = beginInfo->colorAttachmentCount,
         .pColorAttachments = colorAttachments,
         .pDepthAttachment = beginInfo->depthAttachmentPresent ? &(const VkRenderingAttachmentInfo){
@@ -3013,6 +3013,7 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
             DefaultDynamicState ds = destination_->dynamicState;
             VkCommandBuffer* maybeBuffer = DynamicStateCommandBufferMap_get(&bundle->encodedCommandBuffers, ds);
             VkCommandBuffer executedBuffer;
+            #if RENDERBUNDLES_AS_SECONDARY_COMMANDBUFFERS == 1
             if(maybeBuffer){
                 executedBuffer = *maybeBuffer;
             }
@@ -3067,6 +3068,12 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                 DynamicStateCommandBufferMap_put(&bundle->encodedCommandBuffers, ds, executedBuffer);
             }
             device->functions.vkCmdExecuteCommands(destination, 1, &executedBuffer);
+            #else
+            RenderPassCommandBegin dummyBeginInfo = {
+                .colorAttachmentCount = bundle->colorAttachmentCount
+            };
+            recordVkCommands(destination, device, &bundle->bufferedCommands, &dummyBeginInfo);
+            #endif
         }break;
         case cp_command_type_set_compute_pipeline: {
             const ComputePassCommandSetPipeline* setComputePipeline = &command->setComputePipeline;
@@ -3891,7 +3898,7 @@ void wgpuDeviceRelease(WGPUDevice device){
 
                 device->functions.vkDestroySemaphore(device->device, device->queue->syncState[i].acquireImageSemaphore, NULL);
                 for(uint32_t s = 0;s < device->queue->syncState[i].semaphores.size;s++){
-                    device->functions.vkDestroySemaphore(device->device, device->queue->syncState[i].semaphores.data[s], NULL);//todo
+                    device->functions.vkDestroySemaphore(device->device, device->queue->syncState[i].semaphores.data[s], NULL);
                 }
                 VkSemaphoreVector_free(&device->queue->syncState[i].semaphores);
                 wgpuFenceRelease(cache->finalTransitionFence);
@@ -3991,6 +3998,22 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
     vertShaderStageInfo.module = (descriptor->vertex.module)->vulkanModule;
     vertShaderStageInfo.pName = descriptor->vertex.entryPoint.data; // Assuming null-terminated or careful length handling elsewhere
+    
+    
+    VkSpecializationInfo specInfo = {0};
+    double vertexConstantBuffer[32];
+    VkSpecializationMapEntry vertexMapEntries[32];
+    if(descriptor->vertex.constantCount){
+        specInfo.pData = vertexConstantBuffer;
+        for(uint32_t i = 0;i < descriptor->vertex.constantCount;i++){
+            vertexConstantBuffer[i] = descriptor->vertex.constants[i].value;
+            vertexMapEntries[i].constantID = i;
+            vertexMapEntries[i].offset = i * sizeof(double);
+        }
+        specInfo.dataSize = descriptor->vertex.constantCount * sizeof(double);
+        specInfo.mapEntryCount = descriptor->vertex.constantCount;
+        vertShaderStageInfo.pSpecializationInfo = &specInfo;
+    }
     // TODO: Handle constants if necessary via specialization constants
     // vertShaderStageInfo.pSpecializationInfo = ...;
     shaderStages[shaderStageInsertPos++] = vertShaderStageInfo;
