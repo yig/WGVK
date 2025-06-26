@@ -2,18 +2,21 @@
 #include <stdlib.h>
 
 const char wgslSource[] = R"(
-override red = 1.0f;
+const red = 0.5f;
 struct VertexInput {
-    @location(0) position: vec2f
+    @location(0) position: vec2f,
+    @location(1) uv: vec2f
 };
 struct VertexOutput {
-    @builtin(position) position: vec4f
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f
 };
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.position = vec4f(in.position.x, in.position.y, 0.0f, 1.0f);
+    out.uv = in.uv;
     return out;
 }
 @group(0) @binding(0) var colDiffuse: texture_2d<f32>;
@@ -21,7 +24,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return textureSample(colDiffuse, grsampler, in.position.xy * 0.01f) + vec4f(red,0.0f,0.0f,0.0f);
+    return textureSample(colDiffuse, grsampler, in.uv);// + vec4f(red,0.0f,0.0f,0.0f);
 }
 )";
 int main(){
@@ -41,17 +44,25 @@ int main(){
         .nextInChain = &shaderSourceSpirv.chain
     };
     WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
-    WGPUVertexAttribute vbAttribute = {
+    WGPUVertexAttribute vertexAttributes[2] = {
+    {
         .nextInChain = NULL,
         .shaderLocation = 0,
         .format = WGPUVertexFormat_Float32x2,
         .offset = 0
+    },
+    {
+        .nextInChain = NULL,
+        .shaderLocation = 1,
+        .format = WGPUVertexFormat_Float32x2,
+        .offset = 2 * sizeof(float)
+    }
     };
     WGPUVertexBufferLayout vbLayout = {
         .nextInChain = NULL,
-        .arrayStride = sizeof(float) * 2,
-        .attributeCount = 1,
-        .attributes = &vbAttribute,
+        .arrayStride = sizeof(float) * 4,
+        .attributeCount = 2,
+        .attributes = vertexAttributes,
         .stepMode = WGPUVertexStepMode_Vertex
     };
 
@@ -185,11 +196,11 @@ int main(){
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDescriptor);
 
     const float scale = 0.5f;
-    const float vertices[8] = {
-        -scale,-scale, 
-        -scale, scale,
-         scale, scale,
-         scale,-scale,
+    const float vertices[16] = {
+        -scale,-scale,0,0,
+        -scale, scale,0,1,
+         scale, scale,1,1,
+         scale,-scale,1,0,
     };
     const uint32_t indices[6] = {
         0,1,2,0,2,3
@@ -271,11 +282,11 @@ int main(){
 
         WGPUBuffer adhocbuffer = wgpuDeviceCreateBuffer(device, &bufferDescriptor);
         
-        float adhocVertices[8] = {
-            scale * 1.5 * sin(t             ), scale * 1.5 * cos(t             ),
-            scale * 1.5 * sin(t + M_PI_2    ), scale * 1.5 * cos(t + M_PI_2    ),
-            scale * 1.5 * sin(t + 2 * M_PI_2), scale * 1.5 * cos(t + 2 * M_PI_2),
-            scale * 1.5 * sin(t + 3 * M_PI_2), scale * 1.5 * cos(t + 3 * M_PI_2)
+        float adhocVertices[16] = {
+            scale * 1.5 * sin(t             ), scale * 1.5 * cos(t             ),0,0,
+            scale * 1.5 * sin(t + M_PI_2    ), scale * 1.5 * cos(t + M_PI_2    ),0,1,
+            scale * 1.5 * sin(t + 2 * M_PI_2), scale * 1.5 * cos(t + 2 * M_PI_2),1,1,
+            scale * 1.5 * sin(t + 3 * M_PI_2), scale * 1.5 * cos(t + 3 * M_PI_2),1,0,
         };
         wgpuQueueWriteBuffer(base.queue, adhocbuffer, 0, adhocVertices, sizeof(adhocVertices));
         wgpuRenderPassEncoderSetPipeline(rpenc, rp);
@@ -283,8 +294,8 @@ int main(){
         wgpuRenderPassEncoderSetIndexBuffer(rpenc, indexBuffer, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
         wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, adhocbuffer, 0, WGPU_WHOLE_SIZE);
         wgpuRenderPassEncoderDrawIndexed(rpenc, 6, 1, 0, 0, 0);
-        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderDrawIndexed(rpenc, 6, 1, 0, 0, 0);
+        //wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
+        //wgpuRenderPassEncoderDrawIndexed(rpenc, 6, 1, 0, 0, 0);
         wgpuRenderPassEncoderEnd(rpenc);
         WGPUCommandBuffer cbuffer = wgpuCommandEncoderFinish(cenc, NULL);
 

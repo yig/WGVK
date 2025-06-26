@@ -1105,6 +1105,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     const char* deviceExtensionsToLookFor[] = {
         //#ifndef FORCE_HEADLESS
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE_7_EXTENSION_NAME,
         //#endif
         #if VULKAN_ENABLE_RAYTRACING == 1
         VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,      // "VK_KHR_acceleration_structure"

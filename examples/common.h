@@ -99,7 +99,10 @@ static void deviceCallbackFunction(
     ){
     *((WGPUDevice*)userdata1) = device;
 }
-
+static void glfwCloseCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
+    if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+}
 wgpu_base wgpu_init(){
     
     WGPUInstanceLayerSelection lsel = {
@@ -169,7 +172,7 @@ wgpu_base wgpu_init(){
     glfwInit();
     
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "GLFW Window", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(900, 900, "GLFW Window", NULL, NULL);
 
     #ifdef _WIN32
     WGPUSurfaceSourceWindowsHWND surfaceChainObj = {
@@ -205,9 +208,9 @@ wgpu_base wgpu_init(){
         surfaceChain = (WGPUChainedStruct*)&surfaceChainX11;
     }
     #endif
-    WGPUSurfaceDescriptor surfaceDescriptor;
-    surfaceDescriptor.nextInChain = surfaceChain;
-    surfaceDescriptor.label = (WGPUStringView){ NULL, WGPU_STRLEN };
+    WGPUSurfaceDescriptor surfaceDescriptor = {
+        .nextInChain = surfaceChain
+    };
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     WGPUSurfaceCapabilities caps = {0};
@@ -224,6 +227,7 @@ wgpu_base wgpu_init(){
         .width = width,
         .height = height
     });
+    glfwSetKeyCallback(window, glfwCloseCallback);
     return (wgpu_base){
         .instance = instance,
         .adapter = requestedAdapter,
