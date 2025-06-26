@@ -2605,7 +2605,7 @@ WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, 
         wgvk_assert(rpdesc->depthStencilAttachment->view, "depthStencilAttachment.view is null");
         ce_trackTextureView(enc, rpdesc->depthStencilAttachment->view, iur_depth);
     }
-    wgpuRenderPassEncoderSetViewport(ret, 0, 0, rpdesc->colorAttachments[0].view->width, rpdesc->colorAttachments[0].view->height, 0, 1);
+    //wgpuRenderPassEncoderSetViewport(ret, 0, 0, rpdesc->colorAttachments[0].view->width, rpdesc->colorAttachments[0].view->height, 0, 1);
     return ret;
 }
 
@@ -2670,30 +2670,7 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
     
 
     
-    const uint32_t vpWidth = beginInfo->colorAttachments[0].view->width;
-    const uint32_t vpHeight = beginInfo->colorAttachments[0].view->height;
-    
-    const VkViewport viewport = {
-        .x        = ((float)0),
-        //.y        =  ((float)vpHeight),
-        .y        = ((float)0),
-        .width    = ((float)vpWidth),
-        .height   = ((float)vpHeight),
-        //.height   = -((float)vpHeight),
-        .minDepth = ((float)0),
-        .maxDepth = ((float)1),
-    };
 
-    const VkRect2D scissor = {
-        .offset = {
-            .x = 0,
-            .y = 0,
-        },
-        .extent = {
-            .width = vpWidth,
-            .height = vpHeight,
-        }
-    };
 
     for(size_t i = 0;i < renderPassEncoder->bufferedCommands.size;i++){
         const RenderPassCommandGeneric* cmd = &renderPassEncoder->bufferedCommands.data[i];
@@ -2812,7 +2789,29 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
     };
     device->functions.vkCmdBeginRendering(destination, &info);
     #endif
+    
+    const float vpWidth = (float)beginInfo->colorAttachments[0].view->width;
+    const float vpHeight = (float)beginInfo->colorAttachments[0].view->height;
+    
+    const VkViewport viewport = {
+        .x        = 0,
+        .y        = vpHeight,
+        .width    = vpWidth,
+        .height   = -vpHeight,
+        .minDepth = 0,
+        .maxDepth = 1,
+    };
 
+    const VkRect2D scissor = {
+        .offset = {
+            .x = 0,
+            .y = 0,
+        },
+        .extent = {
+            .width = vpWidth,
+            .height = vpHeight,
+        }
+    };
     for(uint32_t i = 0;i < beginInfo->colorAttachmentCount;i++){
         device->functions.vkCmdSetViewport(destination, i, 1, &viewport);
         device->functions.vkCmdSetScissor (destination, i, 1, &scissor);
@@ -4853,16 +4852,6 @@ void wgpuSurfacePresent(WGPUSurface surface){
         .pImageIndices = &surface->activeImageIndex,
     };
     VkResult presentRes = device->functions.vkQueuePresentKHR(surface->device->queue->presentQueue, &presentInfo);
-
-
-    switch(presentRes){
-        case VK_SUCCESS:break;
-        case VK_SUBOPTIMAL_KHR:
-        TRACELOG(WGPU_LOG_WARNING, "vkQueuePresentKHR() returned %s", vkErrorString(presentRes));
-        break;
-        default:
-        TRACELOG(WGPU_LOG_ERROR, "vkQueuePresentKHR() returned %s", vkErrorString(presentRes));
-    }
     wgpuDeviceTick(surface->device);
 }
 void wgpuDeviceTick(WGPUDevice device){
@@ -5005,7 +4994,12 @@ void wgpuRenderPassEncoderSetViewport            (WGPURenderPassEncoder renderPa
     RenderPassCommandGeneric insert = {
         .type = rp_command_type_set_viewport,
         .setViewport = {
-            x,y,width,height,minDepth,maxDepth
+            .x = x,
+            .y = y + height,
+            .width = width,
+            .height = -height,
+            .minDepth = minDepth,
+            .maxDepth = maxDepth
         }
     };
     RenderPassEncoder_PushCommand(renderPassEncoder, &insert);

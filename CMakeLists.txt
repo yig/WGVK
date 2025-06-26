@@ -5,7 +5,12 @@ include(FetchContent)
 option(WGVK_BUILD_EXAMPLES "Build some WGVK examples" OFF)
 option(WGVK_BUILD_WGSL_SUPPORT "Build the WGSL->SPIRV compiler" OFF)
 option(WGVK_USE_VMA "Use GPUOpen's VMA allocator (Requires C++)" OFF)
-
+if(EMSCRIPTEN)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --use-port=emdawnwebgpu")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --use-port=emdawnwebgpu")
+  set(CMAKE_EXECUTABLE_SUFFIX ".html")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -sASYNCIFY=2 -sUSE_GLFW=3")
+endif()
 
 function(wgvk_bundle_libraries output_target)
   function(get_dependencies input_target)
@@ -48,7 +53,11 @@ function(wgvk_bundle_libraries output_target)
 endfunction()
 
 # Lock in static for now
-set(WGVK_CORE_SRC_LIST "src/wgvk.c")
+if(EMSCRIPTEN)
+  set(WGVK_CORE_SRC_LIST "src/dummy.c")
+else()
+  set(WGVK_CORE_SRC_LIST "src/wgvk.c")
+endif()
 if(SANITIZE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined")
@@ -69,8 +78,9 @@ if(WGVK_BUILD_WGSL_SUPPORT)
     # Add all properties as PUBLIC. This means they are used to build wgvk_core itself,
     # and they are part of its public interface to be inherited by consumers.
     target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 SUPPORT_WGSL=1 WGVK_DISABLE_ASSERT=1)
-    target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
-
+    if(NOT EMSCRIPTEN)
+      target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
+    endif()
     set(DAWN_ENABLE_DESKTOP_GL OFF)
     set(DAWN_ENABLE_OPENGLES OFF)
     set(DAWN_ENABLE_VULKAN OFF)
@@ -156,13 +166,14 @@ endif()
 
 
 if(WGVK_BUILD_EXAMPLES)
-    FetchContent_Declare(
-        glfw
-        URL https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz
-        DOWNLOAD_EXTRACT_TIMESTAMP True
-    )
-    FetchContent_MakeAvailable(glfw)
-
+    if(NOT EMSCRIPTEN)
+      FetchContent_Declare(
+          glfw
+          URL https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz
+          DOWNLOAD_EXTRACT_TIMESTAMP True
+      )
+      FetchContent_MakeAvailable(glfw)
+    endif()
     add_executable(glfw_surface "examples/glfw_surface.c")
     add_executable(basic_compute "examples/basic_compute.c")
     add_executable(rgfw_surface "examples/rgfw_surface.c")

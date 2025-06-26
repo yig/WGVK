@@ -1,4 +1,4 @@
-#include "common.h" // Assumed to contain wgpu_init() and wgpu_base struct
+#include "common.h"
 #include <stdlib.h>
 #include <math.h>
 #ifdef __EMSCRIPTEN__
@@ -52,8 +52,23 @@ void main_loop(void* user_data) {
     wgpuSurfaceGetCurrentTexture(ctx->base.surface, &surfaceTexture);
 
     // The surface must be valid to draw.
-    if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal && surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-        if (surfaceTexture.texture) wgpuTextureRelease(surfaceTexture.texture);
+    if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) {
+        int width, height;
+        glfwGetWindowSize(ctx->base.window, &width, &height);
+        WGPUSurfaceCapabilities caps = {0};
+        WGPUPresentMode desiredPresentMode = WGPUPresentMode_Fifo;
+
+        WGPUSurfaceConfiguration surfaceConfig = {
+            .alphaMode = WGPUCompositeAlphaMode_Opaque,
+            .presentMode = desiredPresentMode,
+            .device = device,
+            .usage = WGPUTextureUsage_RenderAttachment,
+            .format = WGPUTextureFormat_BGRA8Unorm,
+            .width = width,
+            .height = height
+        };
+
+        wgpuSurfaceConfigure(ctx->base.surface, &surfaceConfig);
         return;
     }
 
@@ -86,10 +101,10 @@ void main_loop(void* user_data) {
 
     const float scale = 0.5f;
     float adhocVertices[16] = {
-        scale * 1.5f * sinf(ctx->t             ), scale * 1.5f * cosf(ctx->t             ), 0.0f, 0.0f,
-        scale * 1.5f * sinf(ctx->t + M_PI_2    ), scale * 1.5f * cosf(ctx->t + M_PI_2    ), 0.0f, 1.0f,
-        scale * 1.5f * sinf(ctx->t + 2 * M_PI_2), scale * 1.5f * cosf(ctx->t + 2 * M_PI_2), 1.0f, 1.0f,
-        scale * 1.5f * sinf(ctx->t + 3 * M_PI_2), scale * 1.5f * cosf(ctx->t + 3 * M_PI_2), 1.0f, 0.0f,
+        scale * 1.5f * cosf(ctx->t             ), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t             ), 0.0f, 0.0f,
+        scale * 1.5f * cosf(ctx->t + M_PI_2    ), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t + M_PI_2    ), 0.0f, 1.0f,
+        scale * 1.5f * cosf(ctx->t + 2 * M_PI_2), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t + 2 * M_PI_2), 1.0f, 1.0f,
+        scale * 1.5f * cosf(ctx->t + 3 * M_PI_2), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t + 3 * M_PI_2), 1.0f, 0.0f,
     };
     WGPUBufferDescriptor adhocBufferDesc = {
         .size = sizeof(adhocVertices),
@@ -213,7 +228,7 @@ int main() {
         .fragment = &fragmentState,
         .primitive = { 
             .topology = WGPUPrimitiveTopology_TriangleList,
-            .cullMode = WGPUCullMode_None,
+            .cullMode = WGPUCullMode_Back,
             .frontFace = WGPUFrontFace_CCW
         },
         .layout = pllayout,
@@ -247,7 +262,7 @@ int main() {
     
     uint8_t* textureData = calloc(tdesc.size.width * tdesc.size.height, 4);
     for (size_t i = 0; i < tdesc.size.width * tdesc.size.height * 4; i++) {
-        textureData[i] = (i * 77u) & 255;
+        textureData[i] = (i) & 255;
     }
     wgpuQueueWriteTexture(
         queue,
