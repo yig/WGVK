@@ -1944,7 +1944,7 @@ void ComputePassEncoder_PushCommand(WGPUComputePassEncoder, const RenderPassComm
 
 typedef struct WGPUCommandEncoderImpl{
     VkCommandBuffer buffer;
-    
+    uint32_t refCount;
     WGPURenderPassEncoderSet referencedRPs;
     WGPUComputePassEncoderSet referencedCPs;
     WGPURaytracingPassEncoderSet referencedRTs;
