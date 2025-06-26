@@ -1,5 +1,9 @@
 #include <GLFW/glfw3.h>
-#include <wgvk.h>
+#ifdef __EMSCRIPTEN__
+    #include <webgpu/webgpu.h>
+#else
+    #include <wgvk.h>
+#endif
 #include <external/incbin.h>
 #include <stdio.h>
 //INCBIN(simple_shader, "../resources/simple_shader.wgsl");

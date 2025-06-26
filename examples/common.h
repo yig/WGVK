@@ -1,6 +1,7 @@
 #ifndef COMMON_H_
 #define COMMON_H_
 #include <GLFW/glfw3.h>
+#include <stdio.h>
 #include <webgpu/webgpu.h>
 
 typedef struct wgpu_base{
@@ -99,12 +100,16 @@ static void deviceCallbackFunction(
     ){
     *((WGPUDevice*)userdata1) = device;
 }
-static void glfwCloseCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
+static void CloseWindowCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
     if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
+#define timeoutNS 1000000000
 wgpu_base wgpu_init(){
-    
+    //#ifdef __EMSCRIPTEN__
+    //WGPUInstance instance = wgpuCreateInstance(NULL);
+    //#else
+    #ifndef __EMSCRIPTEN__
     WGPUInstanceLayerSelection lsel = {
         .chain = {
             .next = NULL,
@@ -124,13 +129,26 @@ wgpu_base wgpu_init(){
         #endif
         .capabilities = {0}
     };
-
+    #else
+    WGPUInstanceDescriptor instanceDescriptor = {
+        .capabilities = {
+            .timedWaitAnyEnable = 1
+        }
+    };
+    #endif
     WGPUInstance instance = wgpuCreateInstance(&instanceDescriptor);
+    
+    //#endif
+
+    
 
     WGPURequestAdapterOptions adapterOptions = {0};
-    adapterOptions.featureLevel = WGPUFeatureLevel_Core;
+    adapterOptions.featureLevel = WGPUFeatureLevel_Compatibility;
+    adapterOptions.backendType = WGPUBackendType_WebGPU;
     WGPURequestAdapterCallbackInfo adapterCallback = {0};
     adapterCallback.callback = adapterCallbackFunction;
+    adapterCallback.mode = WGPUCallbackMode_WaitAnyOnly;
+
     WGPUAdapter requestedAdapter;
     adapterCallback.userdata1 = (void*)&requestedAdapter;
     
@@ -141,8 +159,11 @@ wgpu_base wgpu_init(){
         .completed = 0
     };
 
-    wgpuInstanceWaitAny(instance, 1, &winfo, ~0ull);
+    wgpuInstanceWaitAny(instance, 1, &winfo, timeoutNS);
     WGPUStringView deviceLabel = {"WGPU Device", sizeof("WGPU Device") - 1};
+    if(requestedAdapter == NULL){
+        fprintf(stderr, "Adapter is NULL\n");
+    }
 
     WGPUDeviceDescriptor deviceDescriptor = {
         .nextInChain = 0,
@@ -166,7 +187,7 @@ wgpu_base wgpu_init(){
         .future = requestDeviceFuture,
         .completed = 0
     };
-    wgpuInstanceWaitAny(instance, 1, &requestDeviceFutureWaitInfo, ~0ull);
+    wgpuInstanceWaitAny(instance, 1, &requestDeviceFutureWaitInfo, timeoutNS);
 
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     glfwInit();
@@ -184,7 +205,7 @@ wgpu_base wgpu_init(){
         .hinstance = GetModuleHandle(NULL)
     };
     WGPUChainedStruct* surfaceChain = &surfaceChainObj;
-    #else
+    #elif !defined(__EMSCRIPTEN__)
     WGPUSurfaceSourceXlibWindow surfaceChainX11;
     Display* x11_display = glfwGetX11Display();
     Window x11_window = glfwGetX11Window(window);
@@ -207,6 +228,11 @@ wgpu_base wgpu_init(){
     else{
         surfaceChain = (WGPUChainedStruct*)&surfaceChainX11;
     }
+    #else
+    WGPUEmscriptenSurfaceSourceCanvasHTMLSelector fromCanvasHTMLSelector;
+    fromCanvasHTMLSelector.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
+    fromCanvasHTMLSelector.selector = (WGPUStringView){ "canvas", WGPU_STRLEN };
+    WGPUChainedStruct* surfaceChain = (WGPUChainedStruct*)&fromCanvasHTMLSelector;
     #endif
     WGPUSurfaceDescriptor surfaceDescriptor = {
         .nextInChain = surfaceChain
@@ -223,11 +249,13 @@ wgpu_base wgpu_init(){
         .alphaMode = WGPUCompositeAlphaMode_Opaque,
         .presentMode = desiredPresentMode,
         .device = device,
+        .usage = WGPUTextureUsage_RenderAttachment,
         .format = WGPUTextureFormat_BGRA8Unorm,
         .width = width,
         .height = height
     });
-    glfwSetKeyCallback(window, glfwCloseCallback);
+
+    glfwSetKeyCallback(window, CloseWindowCallback);
     return (wgpu_base){
         .instance = instance,
         .adapter = requestedAdapter,

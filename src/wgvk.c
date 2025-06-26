@@ -2675,11 +2675,11 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
     
     const VkViewport viewport = {
         .x        = ((float)0),
-        .y        =  ((float)vpHeight),
-        //.y        = ((float)0),
+        //.y        =  ((float)vpHeight),
+        .y        = ((float)0),
         .width    = ((float)vpWidth),
-        //.height   = ((float)vpHeight),
-        .height   = -((float)vpHeight),
+        .height   = ((float)vpHeight),
+        //.height   = -((float)vpHeight),
         .minDepth = ((float)0),
         .maxDepth = ((float)1),
     };
