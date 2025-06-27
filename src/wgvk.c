@@ -1592,9 +1592,10 @@ void wgpuQueueWriteTexture(WGPUQueue queue, const WGPUTexelCopyTextureInfo* dest
         wgpuBufferUnmap(stagingBuffer);
     }
     //WGPUCommandEncoder enkoder = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
-    WGPUTexelCopyBufferInfo source;
-    source.buffer = stagingBuffer;
-    source.layout = *dataLayout;
+    WGPUTexelCopyBufferInfo source = {
+        .buffer = stagingBuffer,
+        .layout = *dataLayout
+    };
 
     wgpuCommandEncoderCopyBufferToTexture(queue->presubmitCache, &source, destination, writeSize);
     //WGPUCommandBuffer puffer = wgpuCommandEncoderFinish(enkoder, NULL);
@@ -3228,7 +3229,8 @@ static CmdBarrierSet GetCompatibilityBarriers(WGPUCommandBuffer srcBuffer, WGPUC
                 .oldLayout = srcPair->value.lastLayout,
                 .newLayout = dstValue->initialLayout,
                 .srcAccessMask = srcPair->value.lastAccess,
-                .dstAccessMask = dstValue->initialAccess
+                .dstAccessMask = dstValue->initialAccess,
+                .subresourceRange = dstValue->initiallyAccessedSubresource
             };
             VkImageMemoryBarrierVector_push_back(&ret.imageBarriers, insert);
         }
@@ -3281,8 +3283,8 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     
     // LayoutAssumptions_for_each(&pscache->resourceUsage.entryAndFinalLayouts, welldamn_sdfd, NULL);
     
-    WGPUCommandBuffer sbuffer = buffers[0];
-    ImageUsageRecordMap_for_each(&sbuffer->resourceUsage.referencedTextures, registerTransitionCallback, pscache); 
+    //WGPUCommandBuffer sbuffer = buffers[0];
+    //ImageUsageRecordMap_for_each(&sbuffer->resourceUsage.referencedTextures, registerTransitionCallback, pscache); 
     
     
     WGPUCommandBuffer cachebuffer = wgpuCommandEncoderFinish(queue->presubmitCache, NULL);
@@ -3297,9 +3299,7 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         submittableWGPU.data[i + 1] = buffers[i];
     }
 
-    for(uint32_t i = 0;i < submittableWGPU.size;i++){
-        ImageUsageRecordMap_for_each(&submittableWGPU.data[i]->resourceUsage.referencedTextures, updateLayoutCallback, NULL);
-    }
+    
     
     WGPUFence fence = wgpuDeviceCreateFence(queue->device);
 
@@ -3319,13 +3319,14 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         for(size_t i = 0;i < initialImageUsage->current_capacity;i++){
             const ImageUsageRecordMap_kv_pair* kvp = initialImageUsage->table + i;
             if(kvp->key != PHM_EMPTY_SLOT_KEY){
-                if(((WGPUTexture)kvp->key)->layout != kvp->value.initialLayout){
+                WGPUTexture tex = (WGPUTexture)kvp->key;
+                if(tex->layout != kvp->value.initialLayout){
                     VkImageMemoryBarrier imb = {
                         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                        .image = ((WGPUTexture)kvp->key)->image,
+                        .image = tex->image,
                         .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
                         .dstAccessMask = kvp->value.initialAccess,
-                        .oldLayout = ((WGPUTexture)kvp->key)->layout,
+                        .oldLayout = tex->layout,
                         .newLayout = kvp->value.initialLayout,
                         .srcQueueFamilyIndex = queue->device->adapter->queueIndices.graphicsIndex,
                         .dstQueueFamilyIndex = queue->device->adapter->queueIndices.graphicsIndex,
@@ -3350,9 +3351,7 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
 
         WGPUCommandBufferVector_push_back(&interspersedBuffers, initialLayoutConsiderationsBuffer);
         for(size_t cbi = 0;cbi < submittableWGPU.size - 1;cbi++){
-            CmdBarrierSet set;
-            CmdBarrierSet_init(&set);
-            GetCompatibilityBarriers(submittableWGPU.data[cbi], submittableWGPU.data[cbi + 1]);
+            CmdBarrierSet set = GetCompatibilityBarriers(submittableWGPU.data[cbi], submittableWGPU.data[cbi + 1]);
             WGPUCommandEncoder barrierDestination = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
             CmdBarrierSet_encode(barrierDestination, &set);
             WGPUCommandBuffer barrierDestinationBuffer = wgpuCommandEncoderFinish(barrierDestination, NULL);
@@ -3397,6 +3396,9 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         submitResult |= queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
         if(submitFence){
             submitFence->state = WGPUFenceState_InUse;
+        }
+        for(uint32_t i = 0;i < submittableWGPU.size;i++){
+            ImageUsageRecordMap_for_each(&submittableWGPU.data[i]->resourceUsage.referencedTextures, updateLayoutCallback, NULL);
         }
         VkSemaphoreVector_free(&waitSemaphores);
         VkCommandBufferVector_free(&finalSubmittable);
