@@ -3255,6 +3255,55 @@ static CmdBarrierSet GetCompatibilityBarriers(WGPUCommandBuffer srcBuffer, WGPUC
 
     return ret;
 }
+void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint32_t bufferCount, CmdBarrierSet* barrierSets){
+    ImageUsageRecordMap referencedImages;
+    BufferUsageRecordMap referencedBuffers;
+    if(bufferCount == 0)return;
+    WGPUDevice device = buffers[0]->device;
+    ImageUsageRecordMap_init (&referencedImages);
+    BufferUsageRecordMap_init(&referencedBuffers);
+
+    for(uint32_t bufferIndex = 0;bufferIndex < bufferCount;bufferIndex++){
+        ImageUsageRecordMap* imageUsage = &buffers[bufferIndex]->resourceUsage.referencedTextures;
+        for(size_t i = 0;i < imageUsage->current_capacity;i++){
+            const ImageUsageRecordMap_kv_pair* kvp = imageUsage->table + i;
+            if(kvp->key != PHM_EMPTY_SLOT_KEY){
+                WGPUTexture tex = (WGPUTexture)kvp->key;
+                VkImageLayout srcLayout;
+                VkAccessFlags srcAccess = 0;
+                VkPipelineStageFlags srcStage;
+                ImageUsageRecord* knowledge = ImageUsageRecordMap_get(&referencedImages, tex);
+                if(knowledge){
+                    srcLayout = knowledge->lastLayout;
+                    srcAccess = knowledge->lastAccess;
+                    srcStage  = knowledge->lastStage;
+                }
+                else{
+                    srcLayout = tex->layout;
+                    srcStage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                    srcAccess = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+                }
+                if(srcLayout != kvp->value.initialLayout){
+                    VkImageMemoryBarrier imageBarrier = {
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                        .image = tex->image,
+                        .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                        .dstAccessMask = kvp->value.initialAccess,
+                        .oldLayout = srcLayout,
+                        .newLayout = kvp->value.initialLayout,
+                        .srcQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
+                        .dstQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
+                        .subresourceRange = kvp->value.initiallyAccessedSubresource  
+                    };
+                    VkImageMemoryBarrierVector_push_back(&barrierSets[bufferIndex].imageBarriers, imageBarrier);
+                    if(knowledge){ 
+                        
+                    }
+                }
+            }
+        }
+    }
+}
 
 void updateLayoutCallback(void* texture_, ImageUsageRecord* record, void* unused){
     WGPUTexture texture = (WGPUTexture)texture_;
@@ -3393,8 +3442,8 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         };
         ++queue->syncState[cacheIndex].submits;
         WGPUFence submitFence = fence;
-        submitResult |= queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
-        if(submitFence){
+        VkResult singleSubmitResult = queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
+        if(singleSubmitResult == VK_SUCCESS){
             submitFence->state = WGPUFenceState_InUse;
         }
         for(uint32_t i = 0;i < submittableWGPU.size;i++){
