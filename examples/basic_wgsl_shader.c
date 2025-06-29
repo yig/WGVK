@@ -258,15 +258,16 @@ int main() {
         .usage = WGPUTextureUsage_TextureBinding
     };
     WGPUTextureView textureView = wgpuTextureCreateView(texture, &viewDesc);
-    
-    
     uint8_t* textureData = calloc(tdesc.size.width * tdesc.size.height, 4);
     for (size_t i = 0; i < tdesc.size.width * tdesc.size.height * 4; i++) {
         textureData[i] = (i) & 255;
     }
     wgpuQueueWriteTexture(
         queue,
-        &(WGPUTexelCopyTextureInfo){.texture = texture},
+        &(WGPUTexelCopyTextureInfo){
+            .texture = texture,
+            .aspect = WGPUTextureAspect_All,
+        },
         textureData, tdesc.size.width * tdesc.size.height * 4,
         &(WGPUTexelCopyBufferLayout){.bytesPerRow = tdesc.size.width * 4, .rowsPerImage = tdesc.size.height},
         &(WGPUExtent3D){tdesc.size.width, tdesc.size.height, 1}

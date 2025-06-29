@@ -2196,7 +2196,7 @@ WGPUTextureView wgpuTextureCreateView(WGPUTexture texture, const WGPUTextureView
         .viewType = toVulkanTextureViewDimension(descriptor->dimension),
         .format = toVulkanPixelFormat(descriptor->format),
         .subresourceRange = {
-            .aspectMask = toVulkanAspectMask(descriptor->aspect),
+            .aspectMask = toVulkanAspectMask(descriptor->aspect, descriptor->format),
             .baseMipLevel = descriptor->baseMipLevel,
             .levelCount = descriptor->mipLevelCount,
             .baseArrayLayer = descriptor->baseArrayLayer,
@@ -3294,7 +3294,7 @@ void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint3
                     .dstQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
                     .subresourceRange = kvp->value.initiallyAccessedSubresource
                 };
-                imageBarrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+                //imageBarrier.subresourceRange.aspectMask;// |= VK_IMAGE_ASPECT_COLOR_BIT;
                 
                 VkImageMemoryBarrierVector_push_back(&barrierSets[bufferIndex].imageBarriers, imageBarrier);
                 if(knowledge){ 
@@ -3397,6 +3397,10 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
             WGPUCommandBufferVector_push_back(&interspersedBuffers, buffer);
             wgpuCommandEncoderRelease(iencoder);
         }
+        for(size_t i = 0;i < submittableWGPU.size;i++){
+            CmdBarrierSet_free(compatibilityBarrierSets + i);
+        }
+        RL_FREE(compatibilityBarrierSets);
         VkSemaphoreVector waitSemaphores;
         VkSemaphoreVector_init(&waitSemaphores);
         if(queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){
@@ -4476,7 +4480,7 @@ void wgpuCommandEncoderCopyBufferToTexture (WGPUCommandEncoder commandEncoder, W
     region.bufferRowLength = 0;
     region.bufferImageHeight = 0;
 
-    region.imageSubresource.aspectMask = is__depthVk(destination->texture->format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.aspectMask = toVulkanAspectMaskVk(destination->aspect, destination->texture->format);
     region.imageSubresource.mipLevel = 0;
     region.imageSubresource.baseArrayLayer = 0;
     region.imageSubresource.layerCount = 1;
@@ -4518,7 +4522,7 @@ void wgpuCommandEncoderCopyTextureToBuffer (WGPUCommandEncoder commandEncoder, c
             .stage  = VK_PIPELINE_STAGE_TRANSFER_BIT,
             .access = VK_ACCESS_TRANSFER_READ_BIT,
             .subresource = {
-                .aspectMask     = toVulkanAspectMask(source->aspect),
+                .aspectMask     = toVulkanAspectMaskVk(source->aspect, source->texture->format),
                 .baseMipLevel   = source->mipLevel,
                 .baseArrayLayer = source->origin.z, // ?
                 .layerCount     = 1,
@@ -4533,7 +4537,7 @@ void wgpuCommandEncoderCopyTextureToBuffer (WGPUCommandEncoder commandEncoder, c
         //.bufferRowLength = destination->layout.bytesPerRow / 4,
         //.bufferImageHeight = destination->layout.rowsPerImage,
         .imageSubresource = {
-            .aspectMask = toVulkanAspectMask(source->aspect),
+            .aspectMask = toVulkanAspectMaskVk(source->aspect, source->texture->format),
             .baseArrayLayer = source->origin.z, // ?
             .mipLevel = source->mipLevel,
             .layerCount = 1,

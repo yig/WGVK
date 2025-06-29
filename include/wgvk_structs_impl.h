@@ -2325,11 +2325,74 @@ VkCompositeAlphaFlagsKHR toVulkanCompositeAlphaMode(WGPUCompositeAlphaMode wacm)
     }
     return 0;
 }
+static inline bool isDepthFormat(WGPUTextureFormat format){
+    return 
+    format == WGPUTextureFormat_Depth16Unorm ||
+    format == WGPUTextureFormat_Depth24Plus ||
+    format == WGPUTextureFormat_Depth24PlusStencil8 ||
+    format == WGPUTextureFormat_Depth32Float ||
+    format == WGPUTextureFormat_Depth32FloatStencil8;
+}
 
-static inline VkImageAspectFlags toVulkanAspectMask(WGPUTextureAspect aspect){
+static inline bool isDepthStencilFormat(WGPUTextureFormat format){
+    return 
+    format == WGPUTextureFormat_Depth24PlusStencil8 ||
+    format == WGPUTextureFormat_Depth32FloatStencil8;
+}
+
+static inline VkImageAspectFlags toVulkanAspectMask(WGPUTextureAspect aspect, WGPUTextureFormat format){
+    bool depth = isDepthFormat(format);
+    bool depthStencil = isDepthStencilFormat(format);
+    
     switch(aspect){
-        case WGPUTextureAspect_All:
-        return VK_IMAGE_ASPECT_COLOR_BIT;// | VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        case WGPUTextureAspect_All:{
+            if(depthStencil)return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            if(depth)return VK_IMAGE_ASPECT_DEPTH_BIT;
+            return VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+        case WGPUTextureAspect_DepthOnly:
+        return VK_IMAGE_ASPECT_DEPTH_BIT;
+        case WGPUTextureAspect_StencilOnly:
+        return VK_IMAGE_ASPECT_STENCIL_BIT;
+        case WGPUTextureAspect_Plane0Only:
+        return VK_IMAGE_ASPECT_PLANE_0_BIT;
+        case WGPUTextureAspect_Plane1Only:
+        return VK_IMAGE_ASPECT_PLANE_1_BIT;
+        case WGPUTextureAspect_Plane2Only:
+        return VK_IMAGE_ASPECT_PLANE_2_BIT;
+
+        default: {
+            assert(false && "This aspect is not implemented");
+            return VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+    }
+}
+
+static inline bool isDepthFormatVk(VkFormat format){
+    return
+    format == VK_FORMAT_D16_UNORM ||
+    format == VK_FORMAT_X8_D24_UNORM_PACK32 || // Equivalent for Depth24Plus
+    format == VK_FORMAT_D24_UNORM_S8_UINT ||
+    format == VK_FORMAT_D32_SFLOAT ||
+    format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+}
+
+static inline bool isDepthStencilFormatVk(VkFormat format){
+    return
+    format == VK_FORMAT_D24_UNORM_S8_UINT ||
+    format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+}
+
+static inline VkImageAspectFlags toVulkanAspectMaskVk(WGPUTextureAspect aspect, VkFormat format){
+    bool depth = isDepthFormatVk(format);
+    bool depthStencil = isDepthStencilFormatVk(format);
+
+    switch(aspect){
+        case WGPUTextureAspect_All:{
+            if(depthStencil)return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            if(depth)return VK_IMAGE_ASPECT_DEPTH_BIT;
+            return VK_IMAGE_ASPECT_COLOR_BIT;
+        }
         case WGPUTextureAspect_DepthOnly:
         return VK_IMAGE_ASPECT_DEPTH_BIT;
         case WGPUTextureAspect_StencilOnly:
@@ -2425,8 +2488,6 @@ static inline VkBufferUsageFlags toVulkanBufferUsage(WGPUBufferUsage busg) {
     if (busg & WGPUBufferUsage_ShaderBindingTable) {
         usage |= VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR;
     }
-
-
     return usage;
 }
 
