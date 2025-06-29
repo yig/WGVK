@@ -3283,22 +3283,38 @@ void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint3
                     srcStage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
                     srcAccess = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
                 }
-                if(srcLayout != kvp->value.initialLayout){
-                    VkImageMemoryBarrier imageBarrier = {
-                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                        .image = tex->image,
-                        .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
-                        .dstAccessMask = kvp->value.initialAccess,
-                        .oldLayout = srcLayout,
-                        .newLayout = kvp->value.initialLayout,
-                        .srcQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
-                        .dstQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
-                        .subresourceRange = kvp->value.initiallyAccessedSubresource  
+                VkImageMemoryBarrier imageBarrier = {
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                    .image = tex->image,
+                    .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .dstAccessMask = kvp->value.initialAccess,
+                    .oldLayout = srcLayout,
+                    .newLayout = kvp->value.initialLayout,
+                    .srcQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
+                    .dstQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
+                    .subresourceRange = kvp->value.initiallyAccessedSubresource
+                };
+                imageBarrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+                
+                VkImageMemoryBarrierVector_push_back(&barrierSets[bufferIndex].imageBarriers, imageBarrier);
+                if(knowledge){ 
+                    knowledge->lastAccess              = kvp->value.lastAccess;
+                    knowledge->lastStage               = kvp->value.lastStage;
+                    knowledge->lastLayout              = kvp->value.lastLayout;
+                    knowledge->lastAccessedSubresource = kvp->value.lastAccessedSubresource;
+                }
+                else{
+                    ImageUsageRecord newRecord = {
+                        .initialAccess = kvp->value.lastAccess,
+                        .lastAccess = kvp->value.lastAccess,
+                        .initiallyAccessedSubresource = kvp->value.lastAccessedSubresource,
+                        .lastAccessedSubresource = kvp->value.lastAccessedSubresource,
+                        .initialLayout = kvp->value.lastLayout,
+                        .lastLayout = kvp->value.lastLayout,
+                        .initialStage = kvp->value.lastStage,
+                        .lastStage = kvp->value.lastStage
                     };
-                    VkImageMemoryBarrierVector_push_back(&barrierSets[bufferIndex].imageBarriers, imageBarrier);
-                    if(knowledge){ 
-                        
-                    }
+                    ImageUsageRecordMap_put(&referencedImages, tex, newRecord);
                 }
             }
         }
@@ -3362,53 +3378,25 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     if(use_single_submit && submittableWGPU.size > 0){
         WGPUCommandBufferVector interspersedBuffers;
         WGPUCommandBufferVector_init(&interspersedBuffers);
-        WGPUCommandEncoder initialLayoutConsiderations = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
-        const ResourceUsage* initialUsage = &submittableWGPU.data[0]->resourceUsage;
-        const ImageUsageRecordMap* initialImageUsage = &initialUsage->referencedTextures;
-        for(size_t i = 0;i < initialImageUsage->current_capacity;i++){
-            const ImageUsageRecordMap_kv_pair* kvp = initialImageUsage->table + i;
-            if(kvp->key != PHM_EMPTY_SLOT_KEY){
-                WGPUTexture tex = (WGPUTexture)kvp->key;
-                if(tex->layout != kvp->value.initialLayout){
-                    VkImageMemoryBarrier imb = {
-                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                        .image = tex->image,
-                        .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
-                        .dstAccessMask = kvp->value.initialAccess,
-                        .oldLayout = tex->layout,
-                        .newLayout = kvp->value.initialLayout,
-                        .srcQueueFamilyIndex = queue->device->adapter->queueIndices.graphicsIndex,
-                        .dstQueueFamilyIndex = queue->device->adapter->queueIndices.graphicsIndex,
-                        .subresourceRange = kvp->value.initiallyAccessedSubresource
-                    };
-                    imb.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        CmdBarrierSet* compatibilityBarrierSets = RL_CALLOC(submittableWGPU.size, sizeof(CmdBarrierSet));
 
-                    queue->device->functions.vkCmdPipelineBarrier(
-                        initialLayoutConsiderations->buffer,
-                        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                        kvp->value.initialStage,
-                        0,
-                        0, NULL,
-                        0, NULL,
-                        1, &imb
-                    );
-                }
-            }
+        generateInterspersedCompatibilityBarriers(submittableWGPU.data, submittableWGPU.size, compatibilityBarrierSets);
+        for(uint32_t i = 0;i < submittableWGPU.size;i++){
+            CmdBarrierSet* cbs = compatibilityBarrierSets + i;
+            WGPUCommandEncoder iencoder = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
+            queue->device->functions.vkCmdPipelineBarrier(
+                iencoder->buffer,
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                0,
+                cbs->memoryBarriers.size, cbs->memoryBarriers.data,
+                cbs->bufferBarriers.size, cbs->bufferBarriers.data,
+                cbs->imageBarriers.size, cbs->imageBarriers.data
+            );
+            WGPUCommandBuffer buffer = wgpuCommandEncoderFinish(iencoder, NULL);
+            WGPUCommandBufferVector_push_back(&interspersedBuffers, buffer);
+            wgpuCommandEncoderRelease(iencoder);
         }
-        WGPUCommandBuffer initialLayoutConsiderationsBuffer = wgpuCommandEncoderFinish(initialLayoutConsiderations, NULL);
-        wgpuCommandEncoderRelease(initialLayoutConsiderations);
-
-        WGPUCommandBufferVector_push_back(&interspersedBuffers, initialLayoutConsiderationsBuffer);
-        for(size_t cbi = 0;cbi < submittableWGPU.size - 1;cbi++){
-            CmdBarrierSet set = GetCompatibilityBarriers(submittableWGPU.data[cbi], submittableWGPU.data[cbi + 1]);
-            WGPUCommandEncoder barrierDestination = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
-            CmdBarrierSet_encode(barrierDestination, &set);
-            WGPUCommandBuffer barrierDestinationBuffer = wgpuCommandEncoderFinish(barrierDestination, NULL);
-            wgpuCommandEncoderRelease(barrierDestination);
-            WGPUCommandBufferVector_push_back(&interspersedBuffers, barrierDestinationBuffer);
-            CmdBarrierSet_free(&set);
-        }
-
         VkSemaphoreVector waitSemaphores;
         VkSemaphoreVector_init(&waitSemaphores);
         if(queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){
