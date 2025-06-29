@@ -41,6 +41,9 @@ typedef struct {
     float t;
 } Context;
 
+uint64_t stamp;
+uint64_t frameCount = 0;
+
 void main_loop(void* user_data) {
     Context* ctx = (Context*)user_data;
     WGPUDevice device = ctx->base.device;
@@ -56,7 +59,7 @@ void main_loop(void* user_data) {
         int width, height;
         glfwGetWindowSize(ctx->base.window, &width, &height);
         WGPUSurfaceCapabilities caps = {0};
-        WGPUPresentMode desiredPresentMode = WGPUPresentMode_Fifo;
+        WGPUPresentMode desiredPresentMode = WGPUPresentMode_Immediate;
 
         WGPUSurfaceConfiguration surfaceConfig = {
             .alphaMode = WGPUCompositeAlphaMode_Opaque,
@@ -101,10 +104,10 @@ void main_loop(void* user_data) {
 
     const float scale = 0.5f;
     float adhocVertices[16] = {
-        scale * 1.5f * cosf(ctx->t             ), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t             ), 0.0f, 0.0f,
-        scale * 1.5f * cosf(ctx->t + M_PI_2    ), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t + M_PI_2    ), 0.0f, 1.0f,
-        scale * 1.5f * cosf(ctx->t + 2 * M_PI_2), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t + 2 * M_PI_2), 1.0f, 1.0f,
-        scale * 1.5f * cosf(ctx->t + 3 * M_PI_2), ctx->t * 0.4f + scale * 1.5f * sinf(ctx->t + 3 * M_PI_2), 1.0f, 0.0f,
+        scale * 1.5f * cosf(ctx->t             ), sin(ctx->t) * 0.4f + scale * 1.5f * sinf(ctx->t             ), 0.0f, 0.0f,
+        scale * 1.5f * cosf(ctx->t + M_PI_2    ), sin(ctx->t) * 0.4f + scale * 1.5f * sinf(ctx->t + M_PI_2    ), 0.0f, 1.0f,
+        scale * 1.5f * cosf(ctx->t + 2 * M_PI_2), sin(ctx->t) * 0.4f + scale * 1.5f * sinf(ctx->t + 2 * M_PI_2), 1.0f, 1.0f,
+        scale * 1.5f * cosf(ctx->t + 3 * M_PI_2), sin(ctx->t) * 0.4f + scale * 1.5f * sinf(ctx->t + 3 * M_PI_2), 1.0f, 0.0f,
     };
     WGPUBufferDescriptor adhocBufferDesc = {
         .size = sizeof(adhocVertices),
@@ -134,12 +137,19 @@ void main_loop(void* user_data) {
     wgpuTextureViewRelease(surfaceView);
     wgpuCommandBufferRelease(cbuffer);
     wgpuCommandEncoderRelease(cenc);
+    ++frameCount;
+    uint64_t nextStamp = nanoTime();
+    if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
+        stamp = nextStamp;
+        printf("FPS: %llu\n", (unsigned long long)frameCount);
+        frameCount = 0;
+    }
 }
 
 
 int main() {
     Context* ctx = (Context*)calloc(1, sizeof(Context));
-
+    stamp = nanoTime();
     ctx->base = wgpu_init();
     if (!ctx->base.device) {
         free(ctx);

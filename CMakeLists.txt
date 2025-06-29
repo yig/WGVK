@@ -59,13 +59,15 @@ else()
   set(WGVK_CORE_SRC_LIST "src/wgvk.c")
 endif()
 if(SANITIZE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=${SANITIZE}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=${SANITIZE}")
 endif()
 if(WGVK_USE_VMA)
     list(APPEND WGVK_CORE_SRC_LIST "src/vma_impl.cpp")
 endif()
 
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-DNDEBUG -g3 -O3")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-DNDEBUG -g3 -O3")
 
 # We define a variable to hold the name of the main library target.
 # This avoids repeating `if/else` logic for setting properties.

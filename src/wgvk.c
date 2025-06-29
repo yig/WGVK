@@ -799,8 +799,8 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         // TODO: Handle other potential structs in nextInChain if necessary
     }
     else {
-        nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_KHRONOS_validation";
-        ++requestedAvailableLayerCount;
+        //nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_KHRONOS_validation";
+        //++requestedAvailableLayerCount;
     }
     VkValidationFeaturesEXT validationFeatures zeroinit;
     VkValidationFeatureEnableEXT enables[] = {
@@ -3319,6 +3319,9 @@ void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint3
             }
         }
     }
+    ImageUsageRecordMap_free(&referencedImages);
+    BufferUsageRecordMap_free(&referencedBuffers);
+
 }
 
 void updateLayoutCallback(void* texture_, ImageUsageRecord* record, void* unused){
@@ -3375,9 +3378,10 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     PerframeCache* perFrameCache = &queue->device->frameCaches[cacheIndex];
     
     VkResult submitResult = 0;
+    WGPUCommandBufferVector interspersedBuffers;
+    WGPUCommandBufferVector_init(&interspersedBuffers);
     if(use_single_submit && submittableWGPU.size > 0){
-        WGPUCommandBufferVector interspersedBuffers;
-        WGPUCommandBufferVector_init(&interspersedBuffers);
+        
         CmdBarrierSet* compatibilityBarrierSets = RL_CALLOC(submittableWGPU.size, sizeof(CmdBarrierSet));
 
         generateInterspersedCompatibilityBarriers(submittableWGPU.data, submittableWGPU.size, compatibilityBarrierSets);
@@ -3434,8 +3438,8 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         };
         ++queue->syncState[cacheIndex].submits;
         WGPUFence submitFence = fence;
-        VkResult singleSubmitResult = queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
-        if(singleSubmitResult == VK_SUCCESS){
+        submitResult = queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
+        if(submitResult == VK_SUCCESS){
             submitFence->state = WGPUFenceState_InUse;
         }
         for(uint32_t i = 0;i < submittableWGPU.size;i++){
@@ -3443,6 +3447,11 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         }
         VkSemaphoreVector_free(&waitSemaphores);
         VkCommandBufferVector_free(&finalSubmittable);
+        for(size_t i = 0;i < interspersedBuffers.size;i++){
+            // compensated by not calling addref below
+            // wgpuCommandBufferRelease(interspersedBuffers.data[i]);
+        }
+        
         RL_FREE(waitFlags);
     }
     else{
@@ -3518,9 +3527,12 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         
         for(size_t i = 0;i < commandCount;i++){
             WGPUCommandBufferVector_push_back(&insert, buffers[i]);
-            //insert.insert(buffers[i]);
             ++buffers[i]->refCount;
         }
+        for(size_t i = 0;i < interspersedBuffers.size;i++){
+            WGPUCommandBufferVector_push_back(&insert, interspersedBuffers.data[i]);
+        }
+        WGPUCommandBufferVector_free(&interspersedBuffers);
         WGPUCommandBufferVector* fence_iterator = PendingCommandBufferMap_get(&(queue->pendingCommandBuffers[frameCount % framesInFlight]), (void*)fence);
         //auto it = queue->pendingCommandBuffers[frameCount % framesInFlight].find(fence);
         if(fence_iterator == NULL){
@@ -4875,7 +4887,7 @@ void wgpuSurfaceGetCurrentTexture(WGPUSurface surface, WGPUSurfaceTexture* surfa
         }
     }
     else{
-        TRACELOG(WGPU_LOG_ERROR, "Surface is not configured");
+        DeviceCallback(surface->device, WGPUErrorType_Validation, STRVIEW("Surface is not configured"));
     }
 }
 
