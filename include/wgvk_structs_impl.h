@@ -717,6 +717,176 @@ void wgvk_job_destroy(wgvk_job_t* job);
         dest->size = source->size;                                                                                               \
         dest->capacity = capacity_to_allocate;                                                                                   \
     }
+
+
+#define DEFINE_VECTOR_WITH_INLINE_STORAGE(SCOPE, Type, Name, InlineCapacity)                                                     \
+                                                                                                                                 \
+    typedef struct {                                                                                                             \
+        Type *data;                                                                                                              \
+        size_t size;                                                                                                             \
+        size_t capacity;                                                                                                         \
+        Type inline_storage[InlineCapacity];                                                                                     \
+        bool using_heap;                                                                                                         \
+    } Name;                                                                                                                      \
+                                                                                                                                 \
+    /** @brief Initializes vector to use inline storage */                                                                      \
+    SCOPE void Name##_init(Name *v) {                                                                                            \
+        v->data = v->inline_storage;                                                                                             \
+        v->size = 0;                                                                                                             \
+        v->capacity = InlineCapacity;                                                                                            \
+        v->using_heap = false;                                                                                                   \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE bool Name##_empty(Name *v) { return v->size == 0; }                                                                    \
+                                                                                                                                 \
+    /** @brief Initializes with specific size, switching to heap if needed */                                                   \
+    SCOPE void Name##_initWithSize(Name *v, size_t initialSize) {                                                                \
+        if (initialSize == 0) {                                                                                                  \
+            Name##_init(v);                                                                                                      \
+        } else if (initialSize <= InlineCapacity) {                                                                              \
+            v->data = v->inline_storage;                                                                                         \
+            v->capacity = InlineCapacity;                                                                                        \
+            v->using_heap = false;                                                                                               \
+            memset(v->data, 0, initialSize * sizeof(Type));                                                                     \
+            v->size = initialSize;                                                                                               \
+        } else {                                                                                                                 \
+            v->data = (Type *)calloc(initialSize, sizeof(Type));                                                                 \
+            if (!v->data) {                                                                                                      \
+                Name##_init(v);                                                                                                  \
+                return;                                                                                                          \
+            }                                                                                                                    \
+            v->size = initialSize;                                                                                               \
+            v->capacity = initialSize;                                                                                           \
+            v->using_heap = true;                                                                                                \
+        }                                                                                                                        \
+    }                                                                                                                            \
+                                                                                                                                 \
+    /** @brief Frees heap memory and resets to inline storage */                                                                \
+    SCOPE void Name##_free(Name *v) {                                                                                            \
+        if (v->using_heap && v->data != NULL) {                                                                                  \
+            free(v->data);                                                                                                       \
+        }                                                                                                                        \
+        Name##_init(v);                                                                                                          \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE void Name##_clear(Name *v) { v->size = 0; }                                                                            \
+                                                                                                                                 \
+    /** @brief Reserves capacity, migrating to heap if exceeding inline limit */                                                \
+    SCOPE int Name##_reserve(Name *v, size_t new_capacity) {                                                                     \
+        if (new_capacity <= v->capacity) {                                                                                       \
+            return 0;                                                                                                            \
+        }                                                                                                                        \
+                                                                                                                                 \
+        if (new_capacity <= InlineCapacity) {                                                                                    \
+            return 0;                                                                                                            \
+        }                                                                                                                        \
+                                                                                                                                 \
+        Type *new_data = (Type *)malloc(new_capacity * sizeof(Type));                                                            \
+        if (!new_data) {                                                                                                         \
+            return -1;                                                                                                           \
+        }                                                                                                                        \
+                                                                                                                                 \
+        if (v->size > 0) {                                                                                                       \
+            memcpy(new_data, v->data, v->size * sizeof(Type));                                                                   \
+        }                                                                                                                        \
+                                                                                                                                 \
+        if (v->using_heap) {                                                                                                     \
+            free(v->data);                                                                                                       \
+        }                                                                                                                        \
+                                                                                                                                 \
+        v->data = new_data;                                                                                                      \
+        v->capacity = new_capacity;                                                                                              \
+        v->using_heap = true;                                                                                                    \
+        return 0;                                                                                                                \
+    }                                                                                                                            \
+                                                                                                                                 \
+    /** @brief Adds element, migrating to heap when inline storage exhausted */                                                 \
+    SCOPE int Name##_push_back(Name *v, Type value) {                                                                            \
+        if (v->size >= v->capacity) {                                                                                            \
+            size_t new_capacity;                                                                                                 \
+            if (v->capacity == 0) {                                                                                              \
+                new_capacity = 8;                                                                                                \
+            } else {                                                                                                             \
+                new_capacity = v->capacity * 2;                                                                                  \
+            }                                                                                                                    \
+            if (new_capacity < v->capacity) {                                                                                    \
+                return -1;                                                                                                       \
+            }                                                                                                                    \
+            if (Name##_reserve(v, new_capacity) != 0) {                                                                          \
+                return -1;                                                                                                       \
+            }                                                                                                                    \
+        }                                                                                                                        \
+        v->data[v->size++] = value;                                                                                              \
+        return 0;                                                                                                                \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE void Name##_pop_back(Name *v) { --v->size; }                                                                           \
+                                                                                                                                 \
+    SCOPE Type *Name##_get(Name *v, size_t index) {                                                                              \
+        if (index >= v->size) {                                                                                                  \
+            return NULL;                                                                                                         \
+        }                                                                                                                        \
+        return &v->data[index];                                                                                                  \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE size_t Name##_size(const Name *v) { return v->size; }                                                                  \
+                                                                                                                                 \
+    /** @brief Transfers ownership, maintaining storage type */                                                                  \
+    SCOPE void Name##_move(Name *dest, Name *source) {                                                                           \
+        if (dest == source) {                                                                                                    \
+            return;                                                                                                              \
+        }                                                                                                                        \
+                                                                                                                                 \
+        Name##_free(dest);                                                                                                       \
+                                                                                                                                 \
+        if (source->using_heap) {                                                                                                \
+            dest->data = source->data;                                                                                           \
+            dest->capacity = source->capacity;                                                                                   \
+            dest->using_heap = true;                                                                                             \
+        } else {                                                                                                                 \
+            dest->data = dest->inline_storage;                                                                                   \
+            dest->capacity = InlineCapacity;                                                                                     \
+            dest->using_heap = false;                                                                                            \
+            if (source->size > 0) {                                                                                              \
+                memcpy(dest->data, source->data, source->size * sizeof(Type));                                                   \
+            }                                                                                                                    \
+        }                                                                                                                        \
+                                                                                                                                 \
+        dest->size = source->size;                                                                                               \
+        Name##_init(source);                                                                                                     \
+    }                                                                                                                            \
+                                                                                                                                 \
+    /** @brief Creates deep copy, preserving inline optimization when possible */                                                \
+    SCOPE void Name##_copy(Name *dest, const Name *source) {                                                                     \
+        Name##_free(dest);                                                                                                       \
+                                                                                                                                 \
+        if (source->size == 0) {                                                                                                 \
+            return;                                                                                                              \
+        }                                                                                                                        \
+                                                                                                                                 \
+        if (source->size <= InlineCapacity) {                                                                                    \
+            dest->data = dest->inline_storage;                                                                                   \
+            dest->capacity = InlineCapacity;                                                                                     \
+            dest->using_heap = false;                                                                                            \
+        } else {                                                                                                                 \
+            size_t capacity_to_allocate = source->capacity;                                                                      \
+            if (capacity_to_allocate < source->size) {                                                                           \
+                capacity_to_allocate = source->size;                                                                             \
+            }                                                                                                                    \
+                                                                                                                                 \
+            dest->data = (Type *)malloc(capacity_to_allocate * sizeof(Type));                                                    \
+            if (!dest->data) {                                                                                                   \
+                Name##_init(dest);                                                                                               \
+                return;                                                                                                          \
+            }                                                                                                                    \
+            dest->capacity = capacity_to_allocate;                                                                               \
+            dest->using_heap = true;                                                                                             \
+        }                                                                                                                        \
+                                                                                                                                 \
+        memcpy(dest->data, source->data, source->size * sizeof(Type));                                                           \
+        dest->size = source->size;                                                                                               \
+    }
+
 #define DEFINE_GENERIC_HASH_MAP(SCOPE, Name, KeyType, ValueType, KeyHashFunc, KeyCmpFunc, KeyEmptyVal)                           \
     typedef struct Name##_kv_pair {                                                                                              \
         KeyType key;                                                                                                             \
@@ -2268,6 +2438,20 @@ VkQueryType toVulkanQueryType(WGPUQueryType type){
         default: return VK_QUERY_TYPE_MAX_ENUM;
     }
 }
+static inline bool isDepthFormat(WGPUTextureFormat format){
+    return 
+    format == WGPUTextureFormat_Depth16Unorm ||
+    format == WGPUTextureFormat_Depth24Plus ||
+    format == WGPUTextureFormat_Depth24PlusStencil8 ||
+    format == WGPUTextureFormat_Depth32Float ||
+    format == WGPUTextureFormat_Depth32FloatStencil8;
+}
+
+static inline bool isDepthStencilFormat(WGPUTextureFormat format){
+    return 
+    format == WGPUTextureFormat_Depth24PlusStencil8 ||
+    format == WGPUTextureFormat_Depth32FloatStencil8;
+}
 static inline VkImageUsageFlags toVulkanTextureUsage(WGPUTextureUsage usage, WGPUTextureFormat format) {
     VkImageUsageFlags vkUsage = 0;
 
@@ -2284,7 +2468,7 @@ static inline VkImageUsageFlags toVulkanTextureUsage(WGPUTextureUsage usage, WGP
         vkUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
     if (usage & WGPUTextureUsage_RenderAttachment) {
-        if (format == WGPUTextureFormat_Depth16Unorm || format == WGPUTextureFormat_Depth32FloatStencil8 || format == WGPUTextureFormat_Depth24PlusStencil8 || format == WGPUTextureFormat_Depth24Plus || format == WGPUTextureFormat_Depth32Float) {
+        if (isDepthFormat(format)) {
             vkUsage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         } else {
             vkUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -2325,20 +2509,7 @@ VkCompositeAlphaFlagsKHR toVulkanCompositeAlphaMode(WGPUCompositeAlphaMode wacm)
     }
     return 0;
 }
-static inline bool isDepthFormat(WGPUTextureFormat format){
-    return 
-    format == WGPUTextureFormat_Depth16Unorm ||
-    format == WGPUTextureFormat_Depth24Plus ||
-    format == WGPUTextureFormat_Depth24PlusStencil8 ||
-    format == WGPUTextureFormat_Depth32Float ||
-    format == WGPUTextureFormat_Depth32FloatStencil8;
-}
 
-static inline bool isDepthStencilFormat(WGPUTextureFormat format){
-    return 
-    format == WGPUTextureFormat_Depth24PlusStencil8 ||
-    format == WGPUTextureFormat_Depth32FloatStencil8;
-}
 
 static inline VkImageAspectFlags toVulkanAspectMask(WGPUTextureAspect aspect, WGPUTextureFormat format){
     bool depth = isDepthFormat(format);

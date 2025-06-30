@@ -299,14 +299,12 @@ static const WGPUMapMode WGPUMapMode_None = 0x0000000000000000;
 static const WGPUMapMode WGPUMapMode_Read = 0x0000000000000001;
 static const WGPUMapMode WGPUMapMode_Write = 0x0000000000000002;
 
-typedef enum TextureDimension{
+typedef enum WGPUTextureDimension{
     WGPUTextureDimension_Undefined = 0x00000000,
-    WGPUTextureDimension_1D = 0x00000001,
-    WGPUTextureDimension_2D = 0x00000002,
-    //TextureViewDimension_2DArray = 0x00000003,
-    //TextureViewDimension_Cube = 0x00000004,
-    //TextureViewDimension_CubeArray = 0x00000005,
-    WGPUTextureDimension_3D = 0x00000003
+    WGPUTextureDimension_1D        = 0x00000001,
+    WGPUTextureDimension_2D        = 0x00000002,
+    WGPUTextureDimension_3D        = 0x00000003,
+    WGPUTextureDimension_Force32   = 0x7fffffff
 }WGPUTextureDimension;
 
 

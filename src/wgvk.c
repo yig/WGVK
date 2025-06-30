@@ -836,7 +836,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         .enabledLayerCount   = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? requestedAvailableLayerCount : 0,
         .ppEnabledLayerNames = (validationFeatures.sType == VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT) ? nullTerminatedRequestedLayerPointers : NULL,
     };
-    
+    //printf("Enabled layer count: %d\n", ici.enabledLayerCount);
     VkResult result = vkCreateInstance(&ici, NULL, &ret->instance);
     if(result != VK_SUCCESS){
         fprintf(stderr, "vkCreateInstance failed: %s\n", vkErrorString(result));
@@ -3337,8 +3337,9 @@ void releaseCommandBuffersDependingOnFence(void* userdata){
     }
     WGPUCommandBufferVector_free(bufferVector);
 }
-const int use_single_submit = 1;
 
+DEFINE_VECTOR_WITH_INLINE_STORAGE(static inline, CmdBarrierSet, CmdBarrierSetILVector, 4);
+const int use_single_submit = 1;
 void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuffer* buffers){
 
     VkCommandBufferVector submittable;
@@ -3381,12 +3382,12 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     WGPUCommandBufferVector interspersedBuffers;
     WGPUCommandBufferVector_init(&interspersedBuffers);
     if(use_single_submit && submittableWGPU.size > 0){
+        CmdBarrierSetILVector compatibilityBarrierSets;
+        CmdBarrierSetILVector_initWithSize(&compatibilityBarrierSets, submittableWGPU.size);
         
-        CmdBarrierSet* compatibilityBarrierSets = RL_CALLOC(submittableWGPU.size, sizeof(CmdBarrierSet));
-
-        generateInterspersedCompatibilityBarriers(submittableWGPU.data, submittableWGPU.size, compatibilityBarrierSets);
+        generateInterspersedCompatibilityBarriers(submittableWGPU.data, submittableWGPU.size, compatibilityBarrierSets.data);
         for(uint32_t i = 0;i < submittableWGPU.size;i++){
-            CmdBarrierSet* cbs = compatibilityBarrierSets + i;
+            const CmdBarrierSet* cbs = CmdBarrierSetILVector_get(&compatibilityBarrierSets, i);
             WGPUCommandEncoder iencoder = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
             queue->device->functions.vkCmdPipelineBarrier(
                 iencoder->buffer,
@@ -3395,16 +3396,16 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
                 0,
                 cbs->memoryBarriers.size, cbs->memoryBarriers.data,
                 cbs->bufferBarriers.size, cbs->bufferBarriers.data,
-                cbs->imageBarriers.size, cbs->imageBarriers.data
+                cbs->imageBarriers.size,  cbs->imageBarriers.data
             );
             WGPUCommandBuffer buffer = wgpuCommandEncoderFinish(iencoder, NULL);
             WGPUCommandBufferVector_push_back(&interspersedBuffers, buffer);
             wgpuCommandEncoderRelease(iencoder);
         }
         for(size_t i = 0;i < submittableWGPU.size;i++){
-            CmdBarrierSet_free(compatibilityBarrierSets + i);
+            CmdBarrierSet_free(CmdBarrierSetILVector_get(&compatibilityBarrierSets, i));
         }
-        RL_FREE(compatibilityBarrierSets);
+        CmdBarrierSetILVector_free(&compatibilityBarrierSets);
         VkSemaphoreVector waitSemaphores;
         VkSemaphoreVector_init(&waitSemaphores);
         if(queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){

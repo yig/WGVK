@@ -43,6 +43,7 @@ typedef struct {
 
 uint64_t stamp;
 uint64_t frameCount = 0;
+uint64_t totalFrameCount = 0;
 
 void main_loop(void* user_data) {
     Context* ctx = (Context*)user_data;
@@ -113,7 +114,10 @@ void main_loop(void* user_data) {
         .size = sizeof(adhocVertices),
         .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst
     };
-    WGPUBuffer adhocBuffer = wgpuDeviceCreateBuffer(device, &adhocBufferDesc);
+    static WGPUBuffer adhocBuffer;
+    if(totalFrameCount == 0){
+        adhocBuffer = wgpuDeviceCreateBuffer(device, &adhocBufferDesc);
+    }
     wgpuQueueWriteBuffer(queue, adhocBuffer, 0, adhocVertices, sizeof(adhocVertices));
 
     // Record render commands.
@@ -132,12 +136,13 @@ void main_loop(void* user_data) {
     wgpuSurfacePresent(ctx->base.surface);
     #endif
     // Release per-frame resources.
-    wgpuBufferRelease(adhocBuffer);
+    // wgpuBufferRelease(adhocBuffer);
     wgpuRenderPassEncoderRelease(rpenc);
     wgpuTextureViewRelease(surfaceView);
     wgpuCommandBufferRelease(cbuffer);
     wgpuCommandEncoderRelease(cenc);
     ++frameCount;
+    ++totalFrameCount;
     uint64_t nextStamp = nanoTime();
     if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
         stamp = nextStamp;
@@ -257,7 +262,7 @@ int main() {
     WGPUTexture texture = wgpuDeviceCreateTexture(device, &tdesc);
 
 
-        WGPUTextureViewDescriptor viewDesc = {
+    WGPUTextureViewDescriptor viewDesc = {
         .format = WGPUTextureFormat_RGBA8Unorm,
         .dimension = WGPUTextureViewDimension_2D,
         .baseMipLevel = 0,
@@ -288,7 +293,7 @@ int main() {
         .addressModeU = WGPUAddressMode_Repeat,
         .addressModeV = WGPUAddressMode_Repeat,
         .addressModeW = WGPUAddressMode_Repeat,
-        .magFilter = WGPUFilterMode_Nearest,
+        .magFilter = WGPUFilterMode_Linear,
         .minFilter = WGPUFilterMode_Nearest,
         .mipmapFilter = WGPUMipmapFilterMode_Linear,
         .lodMinClamp = 0,
