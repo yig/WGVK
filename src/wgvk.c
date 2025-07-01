@@ -798,7 +798,9 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     char nullTerminatedRequestedLayers[64][64] = {0};
     const char* nullTerminatedRequestedLayerPointers[64] = {0};
     uint32_t requestedAvailableLayerCount = 0;
-
+    for(uint32_t i = 0;i < availableLayerCount;i++){
+        printf("%s\n", availableLayers[i].layerName);
+    }
     
     WGPUInstanceLayerSelection* ils = NULL;
     int debugUtilsAvailable = 0; // Check if debug utils was actually enabled
@@ -834,8 +836,8 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         // TODO: Handle other potential structs in nextInChain if necessary
     }
     else {
-        //nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_PROFILER_unified";
-        //++requestedAvailableLayerCount;
+        nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_PROFILING_framerate";
+        ++requestedAvailableLayerCount;
     }
     VkValidationFeaturesEXT validationFeatures zeroinit;
     VkValidationFeatureEnableEXT enables[] = {
@@ -1432,8 +1434,8 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor*
         propertyToFind = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
     }
     else{
-        //propertyToFind = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        propertyToFind = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        propertyToFind = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        //propertyToFind = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
     }
 
     #if USE_VMA_ALLOCATOR == 1
@@ -2652,47 +2654,14 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
     const size_t bufferSize = RenderPassCommandGenericVector_size(&renderPassEncoder->bufferedCommands);
 
     const RenderPassCommandBegin* beginInfo = &renderPassEncoder->beginInfo;
-    RenderPassLayout rplayout = GetRenderPassLayout2(beginInfo);
 
     
-
-
-    LayoutedRenderPass frp = LoadRenderPassFromLayout(renderPassEncoder->device, rplayout);
-    VkRenderPass vkrenderPass = frp.renderPass;
 
     VkImageView attachmentViews[2 * max_color_attachments + 2] = {0};// = (VkImageView* )RL_CALLOC(frp.allAttachments.size, sizeof(VkImageView) );
     VkClearValue clearValues   [2 * max_color_attachments + 2] = {0};// = (VkClearValue*)RL_CALLOC(frp.allAttachments.size, sizeof(VkClearValue));
+
     
-    for(uint32_t i = 0;i < rplayout.colorAttachmentCount;i++){
-        attachmentViews[i] =        renderPassEncoder->beginInfo.colorAttachments[i].view->view;
-        clearValues[i]     = toVkCV(renderPassEncoder->beginInfo.colorAttachments[i].clearValue);
-    }
-    uint32_t insertIndex = rplayout.colorAttachmentCount;
     
-    if(beginInfo->depthAttachmentPresent){
-        clearValues[insertIndex].depthStencil.depth   = beginInfo->depthStencilAttachment.depthClearValue;
-        clearValues[insertIndex].depthStencil.stencil = beginInfo->depthStencilAttachment.stencilClearValue;
-        attachmentViews[insertIndex++]                = beginInfo->depthStencilAttachment.view->view;
-    }
-    
-    if(beginInfo->colorAttachments[0].resolveTarget){
-        for(uint32_t i = 0;i < rplayout.colorAttachmentCount;i++){
-            wgvk_assert(beginInfo->colorAttachments[i].resolveTarget, "All must have resolve or none");
-            clearValues[insertIndex] = toVkCV(beginInfo->colorAttachments[i].clearValue);
-            attachmentViews[insertIndex++] =  beginInfo->colorAttachments[i].resolveTarget->view;
-        }
-    }
-    const VkFramebufferCreateInfo fbci = {
-        VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        NULL,
-        0,
-        vkrenderPass,
-        frp.allAttachments.size,
-        attachmentViews,
-        beginInfo->colorAttachments[0].view->width,
-        beginInfo->colorAttachments[0].view->height,
-        1
-    };
 
     
     VkRect2D renderPassRect = {
@@ -2773,6 +2742,40 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
         }
     }
     #if VULKAN_USE_DYNAMIC_RENDERING == 0
+    RenderPassLayout rplayout = GetRenderPassLayout2(beginInfo);
+    LayoutedRenderPass frp = LoadRenderPassFromLayout(renderPassEncoder->device, rplayout);
+    VkRenderPass vkrenderPass = frp.renderPass;
+    for(uint32_t i = 0;i < rplayout.colorAttachmentCount;i++){
+        attachmentViews[i] =        renderPassEncoder->beginInfo.colorAttachments[i].view->view;
+        clearValues[i]     = toVkCV(renderPassEncoder->beginInfo.colorAttachments[i].clearValue);
+    }
+    uint32_t insertIndex = rplayout.colorAttachmentCount;
+    
+    if(beginInfo->depthAttachmentPresent){
+        clearValues[insertIndex].depthStencil.depth   = beginInfo->depthStencilAttachment.depthClearValue;
+        clearValues[insertIndex].depthStencil.stencil = beginInfo->depthStencilAttachment.stencilClearValue;
+        attachmentViews[insertIndex++]                = beginInfo->depthStencilAttachment.view->view;
+    }
+    
+    if(beginInfo->colorAttachments[0].resolveTarget){
+        for(uint32_t i = 0;i < rplayout.colorAttachmentCount;i++){
+            wgvk_assert(beginInfo->colorAttachments[i].resolveTarget, "All must have resolve or none");
+            clearValues[insertIndex] = toVkCV(beginInfo->colorAttachments[i].clearValue);
+            attachmentViews[insertIndex++] =  beginInfo->colorAttachments[i].resolveTarget->view;
+        }
+    }
+    const VkFramebufferCreateInfo fbci = {
+        VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        NULL,
+        0,
+        vkrenderPass,
+        frp.allAttachments.size,
+        attachmentViews,
+        beginInfo->colorAttachments[0].view->width,
+        beginInfo->colorAttachments[0].view->height,
+        1
+    };
+
     device->functions.vkCreateFramebuffer(renderPassEncoder->device->device, &fbci, NULL, &renderPassEncoder->frameBuffer);
     const VkRenderPassBeginInfo rpbi = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -3318,12 +3321,12 @@ void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint3
                 else{
                     srcLayout = tex->layout;
                     srcStage  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-                    srcAccess = 0;//VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+                    srcAccess = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
                 }
                 VkImageMemoryBarrier imageBarrier = {
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                     .image = tex->image,
-                    .srcAccessMask = 0,//VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                     .dstAccessMask = kvp->value.initialAccess,
                     .oldLayout = srcLayout,
                     .newLayout = kvp->value.initialLayout,
@@ -3355,6 +3358,49 @@ void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint3
                 }
             }
         }
+        BufferUsageRecordMap* bufferUsage = &buffers[bufferIndex]->resourceUsage.referencedBuffers;
+        for(size_t i = 0;i < bufferUsage->current_capacity;i++){
+            const BufferUsageRecordMap_kv_pair* kvp = bufferUsage->table + i;
+            if(kvp->key != PHM_EMPTY_SLOT_KEY){
+                WGPUBuffer buf = (WGPUBuffer)kvp->key;
+                VkAccessFlags srcAccess = 0;
+                VkPipelineStageFlags srcStage;
+                BufferUsageRecord* knowledge = BufferUsageRecordMap_get(&referencedBuffers, buf);
+                if(knowledge){
+                    srcAccess = knowledge->lastAccess;
+                    srcStage  = knowledge->lastStage;
+                }
+                else{
+                    srcStage  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+                    srcAccess = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+                }
+                VkBufferMemoryBarrier bufferBarrier = {
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                    .buffer = buf->buffer,
+                    .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .dstAccessMask = kvp->value.initialAccess,
+                    .srcQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
+                    .dstQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
+                    .size = VK_WHOLE_SIZE
+                };
+                VkBufferMemoryBarrierVector_push_back(&barrierSets[bufferIndex].bufferBarriers, bufferBarrier);
+                if(knowledge){ 
+                    knowledge->lastAccess              = kvp->value.lastAccess;
+                    knowledge->lastStage               = kvp->value.lastStage;
+                }
+                else{
+                    BufferUsageRecord newRecord = {
+                        .initialAccess = kvp->value.lastAccess,
+                        .lastAccess = kvp->value.lastAccess,
+                        .initialStage = kvp->value.lastStage,
+                        .lastStage = kvp->value.lastStage,
+                        .everWrittenTo = isWritingAccess(kvp->value.lastAccess)
+                    };
+                    BufferUsageRecordMap_put(&referencedBuffers, buf, newRecord);
+                }
+            }
+        }
+
     }
     ImageUsageRecordMap_free(&referencedImages);
     BufferUsageRecordMap_free(&referencedBuffers);
@@ -3430,8 +3476,8 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
             WGPUCommandEncoder iencoder = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
             queue->device->functions.vkCmdPipelineBarrier(
                 iencoder->buffer,
-                cbs->srcStage,
-                cbs->dstStage,
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                 0,
                 cbs->memoryBarriers.size, cbs->memoryBarriers.data,
                 cbs->bufferBarriers.size, cbs->bufferBarriers.data,
@@ -4713,7 +4759,6 @@ void wgpuRenderPassEncoderDraw(WGPURenderPassEncoder rpe, uint32_t vertices, uin
 // Implementation of RenderpassEncoderDrawIndexed
 void wgpuRenderPassEncoderDrawIndexed(WGPURenderPassEncoder rpe, uint32_t indices, uint32_t instances, uint32_t firstindex, int32_t baseVertex, uint32_t firstinstance) {
     wgvk_assert(rpe != NULL, "RenderPassEncoderHandle is null");
-
     RenderPassCommandGeneric insert = {
         .type = rp_command_type_draw_indexed,
         .drawIndexed = {

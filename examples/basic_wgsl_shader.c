@@ -141,14 +141,14 @@ void main_loop(void* user_data) {
     wgpuTextureViewRelease(surfaceView);
     wgpuCommandBufferRelease(cbuffer);
     wgpuCommandEncoderRelease(cenc);
-    ++frameCount;
-    ++totalFrameCount;
-    uint64_t nextStamp = nanoTime();
-    if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
-        stamp = nextStamp;
-        printf("FPS: %llu\n", (unsigned long long)frameCount);
-        frameCount = 0;
-    }
+    //++frameCount;
+    //++totalFrameCount;
+    //uint64_t nextStamp = nanoTime();
+    //if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
+    //    stamp = nextStamp;
+    //    printf("FPS: %llu\n", (unsigned long long)frameCount);
+    //    frameCount = 0;
+    //}
 }
 
 

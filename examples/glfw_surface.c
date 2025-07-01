@@ -118,7 +118,7 @@ int main(){
         #ifdef NDEBUG
         NULL,
         #else
-        &lsel.chain,
+        NULL,//&lsel.chain,
         #endif
         .capabilities = {0}
     };
@@ -373,10 +373,10 @@ int main(){
             .colorAttachments = &colorAttachment,
         });
         //wgpuRenderPassEncoderSetScissorRect(rpenc, 0, 0, (frameCount / 8) % 1000, height);
-        //wgpuRenderPassEncoderSetPipeline(rpenc, rp);
-        //wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0);
-        //wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
-        wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
+        wgpuRenderPassEncoderSetPipeline(rpenc, rp);
+        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
+        //wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
         wgpuRenderPassEncoderEnd(rpenc);
         
         WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(cenc, NULL);
@@ -386,13 +386,13 @@ int main(){
         wgpuRenderPassEncoderRelease(rpenc);
         wgpuTextureViewRelease(surfaceView);
         wgpuSurfacePresent(surface);
-        ++frameCount;
-        uint64_t nextStamp = nanoTime();
-        if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
-            stamp = nextStamp;
-            printf("FPS: %llu\n", (unsigned long long)frameCount);
-            frameCount = 0;
-        }
+        //++frameCount;
+        //uint64_t nextStamp = nanoTime();
+        //if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
+        //    stamp = nextStamp;
+        //    printf("FPS: %llu\n", (unsigned long long)frameCount);
+        //    frameCount = 0;
+        //}
     }
     wgpuSurfaceRelease(surface);
 }
