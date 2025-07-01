@@ -106,6 +106,42 @@
 #include <stdarg.h>
 #include <wgvk_structs_impl.h>
 
+/* ---------- POSIX / Unix-like ---------- */
+#if defined(__unix__) || defined(__APPLE__)
+  #include <time.h>
+
+  static inline uint64_t wgvkNanoTime(void)
+  {
+      struct timespec ts;
+  #if defined(CLOCK_MONOTONIC_RAW)        /* Linux, FreeBSD */
+      clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+  #else                                   /* macOS 10.12+, other POSIX */
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+  #endif
+      return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+  }
+
+/* ---------- Windows ---------- */
+#elif defined(_WIN32)
+  #include <windows.h>
+
+  static inline uint64_t wgvkNanoTime(void)
+  {
+      static LARGE_INTEGER freq = { 0 };
+      if (freq.QuadPart == 0)               /* one-time init */
+          QueryPerformanceFrequency(&freq);
+
+      LARGE_INTEGER counter;
+      QueryPerformanceCounter(&counter);
+      /* scale ticks → ns: (ticks * 1e9) / freq */
+      return (uint64_t)((counter.QuadPart * 1000000000ULL) / freq.QuadPart);
+  }
+
+#else
+  #error "Platform not supported"
+#endif
+
+
 static void DeviceCallback(WGPUDevice device, WGPUErrorType type, WGPUStringView msg){
     if(device->uncapturedErrorCallbackInfo.callback){
         device->uncapturedErrorCallbackInfo.callback(&device, type, msg, device->uncapturedErrorCallbackInfo.userdata1, device->uncapturedErrorCallbackInfo.userdata2);
@@ -759,7 +795,6 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     vkEnumerateInstanceLayerProperties(&availableLayerCount, NULL);
     VkResult layerEnumResult = vkEnumerateInstanceLayerProperties(&availableLayerCount, availableLayers);
 
-
     char nullTerminatedRequestedLayers[64][64] = {0};
     const char* nullTerminatedRequestedLayerPointers[64] = {0};
     uint32_t requestedAvailableLayerCount = 0;
@@ -799,7 +834,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         // TODO: Handle other potential structs in nextInChain if necessary
     }
     else {
-        //nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_KHRONOS_validation";
+        //nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_PROFILER_unified";
         //++requestedAvailableLayerCount;
     }
     VkValidationFeaturesEXT validationFeatures zeroinit;
@@ -2461,7 +2496,7 @@ WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, 
     WGPURenderPassEncoder ret = RL_CALLOC(1, sizeof(WGPURenderPassEncoderImpl));
     VkCommandPool pool = enc->device->frameCaches[enc->cacheIndex].commandPool;
 
-
+    ++enc->encodedCommandCount;
     ret->refCount = 2; //One for WGPURenderPassEncoder the other for the command buffer
     
     WGPURenderPassEncoderSet_add(&enc->referencedRPs, ret);
@@ -3184,6 +3219,8 @@ DEFINE_VECTOR(static inline, VkBufferMemoryBarrier, VkBufferMemoryBarrierVector)
 DEFINE_VECTOR(static inline, VkMemoryBarrier, VkMemoryBarrierVector)
 DEFINE_VECTOR(static inline, VkImageMemoryBarrier, VkImageMemoryBarrierVector)
 typedef struct CmdBarrierSet{
+    VkPipelineStageFlags srcStage;
+    VkPipelineStageFlags dstStage;
     VkBufferMemoryBarrierVector bufferBarriers;
     VkMemoryBarrierVector memoryBarriers;
     VkImageMemoryBarrierVector imageBarriers;
@@ -3280,13 +3317,13 @@ void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint3
                 }
                 else{
                     srcLayout = tex->layout;
-                    srcStage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-                    srcAccess = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+                    srcStage  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+                    srcAccess = 0;//VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
                 }
                 VkImageMemoryBarrier imageBarrier = {
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                     .image = tex->image,
-                    .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .srcAccessMask = 0,//VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
                     .dstAccessMask = kvp->value.initialAccess,
                     .oldLayout = srcLayout,
                     .newLayout = kvp->value.initialLayout,
@@ -3294,8 +3331,8 @@ void generateInterspersedCompatibilityBarriers(WGPUCommandBuffer* buffers, uint3
                     .dstQueueFamilyIndex = device->adapter->queueIndices.graphicsIndex,
                     .subresourceRange = kvp->value.initiallyAccessedSubresource
                 };
-                //imageBarrier.subresourceRange.aspectMask;// |= VK_IMAGE_ASPECT_COLOR_BIT;
-                
+                barrierSets[bufferIndex].srcStage |= srcStage;
+                barrierSets[bufferIndex].dstStage |= kvp->value.initialStage;
                 VkImageMemoryBarrierVector_push_back(&barrierSets[bufferIndex].imageBarriers, imageBarrier);
                 if(knowledge){ 
                     knowledge->lastAccess              = kvp->value.lastAccess;
@@ -3342,13 +3379,14 @@ DEFINE_VECTOR_WITH_INLINE_STORAGE(static inline, CmdBarrierSet, CmdBarrierSetILV
 const int use_single_submit = 1;
 void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuffer* buffers){
 
-    VkCommandBufferVector submittable;
+    //VkCommandBufferVector submittable;
     WGPUCommandBufferVector submittableWGPU;
 
-    VkCommandBufferVector_initWithSize(&submittable, commandCount + 1);
-    WGPUCommandBufferVector_initWithSize(&submittableWGPU, commandCount + 1);
-
+    //VkCommandBufferVector_initWithSize(&submittable, commandCount + 1);
+    
     WGPUCommandEncoder pscache = queue->presubmitCache;
+    const uint32_t cacheBufferNonEmpty = ((pscache->encodedCommandCount > 0) ? 1 : 0);
+    WGPUCommandBufferVector_initWithSize(&submittableWGPU, commandCount + cacheBufferNonEmpty);
     
     // LayoutAssumptions_for_each(&pscache->resourceUsage.entryAndFinalLayouts, welldamn_sdfd, NULL);
     
@@ -3358,14 +3396,15 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     
     WGPUCommandBuffer cachebuffer = wgpuCommandEncoderFinish(queue->presubmitCache, NULL);
     
-    submittable.data[0] = cachebuffer->buffer;
-    for(size_t i = 0;i < commandCount;i++){
-        submittable.data[i + 1] = buffers[i]->buffer;
+    //submittable.data[0] = cachebuffer->buffer;
+    //for(size_t i = 0;i < commandCount;i++){
+    //    submittable.data[i + 1] = buffers[i]->buffer;
+    //}
+    if(cacheBufferNonEmpty == 1){
+        submittableWGPU.data[0] = cachebuffer;
     }
-
-    submittableWGPU.data[0] = cachebuffer;
     for(size_t i = 0;i < commandCount;i++){
-        submittableWGPU.data[i + 1] = buffers[i];
+        submittableWGPU.data[i + cacheBufferNonEmpty] = buffers[i];
     }
 
     
@@ -3391,8 +3430,8 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
             WGPUCommandEncoder iencoder = wgpuDeviceCreateCommandEncoder(queue->device, NULL);
             queue->device->functions.vkCmdPipelineBarrier(
                 iencoder->buffer,
-                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                cbs->srcStage,
+                cbs->dstStage,
                 0,
                 cbs->memoryBarriers.size, cbs->memoryBarriers.data,
                 cbs->bufferBarriers.size, cbs->bufferBarriers.data,
@@ -3427,7 +3466,7 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
             VkCommandBufferVector_push_back(&finalSubmittable, interspersedBuffers.data[i]->buffer);
             VkCommandBufferVector_push_back(&finalSubmittable, submittableWGPU.data[i]->buffer);
         }
-        const VkSubmitInfo si = {
+        const VkSubmitInfo submitInfo = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .commandBufferCount = finalSubmittable.size,
             .waitSemaphoreCount = waitSemaphores.size,
@@ -3439,7 +3478,7 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         };
         ++queue->syncState[cacheIndex].submits;
         WGPUFence submitFence = fence;
-        submitResult = queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
+        submitResult = queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &submitInfo, submitFence ? submitFence->fence : VK_NULL_HANDLE);
         if(submitResult == VK_SUCCESS){
             submitFence->state = WGPUFenceState_InUse;
         }
@@ -3449,55 +3488,55 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         VkSemaphoreVector_free(&waitSemaphores);
         VkCommandBufferVector_free(&finalSubmittable);
         for(size_t i = 0;i < interspersedBuffers.size;i++){
-            // compensated by not calling addref below
+            // compensated by not calling addRef below
             // wgpuCommandBufferRelease(interspersedBuffers.data[i]);
         }
         
         RL_FREE(waitFlags);
     }
     else{
-        for(uint32_t i = 0;i < submittable.size;i++){
-            VkSemaphoreVector waitSemaphores;
-            VkSemaphoreVector_init(&waitSemaphores);
-
-            if(queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){
-                VkSemaphoreVector_push_back(&waitSemaphores, queue->syncState[cacheIndex].acquireImageSemaphore);
-                queue->syncState[cacheIndex].acquireImageSemaphoreSignalled = false;
-            }
-            if(queue->syncState[cacheIndex].submits > 0){
-                VkSemaphoreVector_push_back(&waitSemaphores, queue->syncState[cacheIndex].semaphores.data[queue->syncState[cacheIndex].submits]);
-            }
-
-            uint32_t submits = queue->syncState[cacheIndex].submits;
-            
-            VkPipelineStageFlags* waitFlags = (VkPipelineStageFlags*)RL_CALLOC(waitSemaphores.size, sizeof(VkPipelineStageFlags));
-            for(uint32_t i = 0;i < waitSemaphores.size;i++){
-                waitFlags[i] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-            }
-
-            const VkSubmitInfo si = {
-                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                .commandBufferCount = 1,
-                .waitSemaphoreCount = waitSemaphores.size,
-                .pWaitSemaphores = waitSemaphores.data,
-                .pWaitDstStageMask = waitFlags,
-                .signalSemaphoreCount = 1,
-                .pSignalSemaphores = queue->syncState[cacheIndex].semaphores.data + queue->syncState[cacheIndex].submits + 1,
-                .pCommandBuffers = submittable.data + i
-            };
-            
-
-            ++queue->syncState[cacheIndex].submits;
-
-            WGPUFence submitFence = (i == (submittable.size - 1)) ? fence : NULL;
-            submitResult |= queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
-            if(submitFence){
-                submitFence->state = WGPUFenceState_InUse;
-            }
-
-            VkSemaphoreVector_free(&waitSemaphores);
-            RL_FREE(waitFlags);
-        }
+        //for(uint32_t i = 0;i < submittable.size;i++){
+        //    VkSemaphoreVector waitSemaphores;
+        //    VkSemaphoreVector_init(&waitSemaphores);
+//
+        //    if(queue->syncState[cacheIndex].acquireImageSemaphoreSignalled){
+        //        VkSemaphoreVector_push_back(&waitSemaphores, queue->syncState[cacheIndex].acquireImageSemaphore);
+        //        queue->syncState[cacheIndex].acquireImageSemaphoreSignalled = false;
+        //    }
+        //    if(queue->syncState[cacheIndex].submits > 0){
+        //        VkSemaphoreVector_push_back(&waitSemaphores, queue->syncState[cacheIndex].semaphores.data[queue->syncState[cacheIndex].submits]);
+        //    }
+//
+        //    uint32_t submits = queue->syncState[cacheIndex].submits;
+        //    
+        //    VkPipelineStageFlags* waitFlags = (VkPipelineStageFlags*)RL_CALLOC(waitSemaphores.size, sizeof(VkPipelineStageFlags));
+        //    for(uint32_t i = 0;i < waitSemaphores.size;i++){
+        //        waitFlags[i] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        //    }
+//
+        //    const VkSubmitInfo si = {
+        //        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        //        .commandBufferCount = 1,
+        //        .waitSemaphoreCount = waitSemaphores.size,
+        //        .pWaitSemaphores = waitSemaphores.data,
+        //        .pWaitDstStageMask = waitFlags,
+        //        .signalSemaphoreCount = 1,
+        //        .pSignalSemaphores = queue->syncState[cacheIndex].semaphores.data + queue->syncState[cacheIndex].submits + 1,
+        //        .pCommandBuffers = submittable.data + i
+        //    };
+        //    
+//
+        //    ++queue->syncState[cacheIndex].submits;
+//
+        //    WGPUFence submitFence = (i == (submittable.size - 1)) ? fence : NULL;
+        //    submitResult |= queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &si, submitFence ? submitFence->fence : VK_NULL_HANDLE);
+        //    if(submitFence){
+        //        submitFence->state = WGPUFenceState_InUse;
+        //    }
+//
+        //    VkSemaphoreVector_free(&waitSemaphores);
+        //    RL_FREE(waitFlags);
+        //}
     }
 
     if(submitResult == VK_SUCCESS){
@@ -3564,7 +3603,7 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     wgpuCommandBufferRelease(cachebuffer);
     WGPUCommandEncoderDescriptor cedesc zeroinit;
     queue->presubmitCache = wgpuDeviceCreateCommandEncoder(queue->device, &cedesc);
-    VkCommandBufferVector_free(&submittable);
+    //VkCommandBufferVector_free(&submittable);
     WGPUCommandBufferVector_free(&submittableWGPU);
 }
 
@@ -4442,6 +4481,7 @@ void wgpuTextureViewRelease(WGPUTextureView view){
 }
 
 void wgpuCommandEncoderCopyBufferToBuffer  (WGPUCommandEncoder commandEncoder, WGPUBuffer source, uint64_t sourceOffset, WGPUBuffer destination, uint64_t destinationOffset, uint64_t size){
+    ++commandEncoder->encodedCommandCount;
     ce_trackBuffer(
         commandEncoder,
         source,
@@ -4488,7 +4528,7 @@ void wgpuCommandEncoderCopyBufferToTexture (WGPUCommandEncoder commandEncoder, W
     
     VkImageCopy copy;
     VkBufferImageCopy region zeroinit;
-
+    ++commandEncoder->encodedCommandCount;
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
     region.bufferImageHeight = 0;
@@ -4527,6 +4567,7 @@ void wgpuCommandEncoderCopyBufferToTexture (WGPUCommandEncoder commandEncoder, W
     commandEncoder->device->functions.vkCmdCopyBufferToImage(commandEncoder->buffer, source->buffer->buffer, destination->texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 void wgpuCommandEncoderCopyTextureToBuffer (WGPUCommandEncoder commandEncoder, const WGPUTexelCopyTextureInfo* source, const WGPUTexelCopyBufferInfo* destination, const WGPUExtent3D* copySize){
+    ++commandEncoder->encodedCommandCount;
     ce_trackTexture(
         commandEncoder,
         source->texture,
@@ -4576,7 +4617,7 @@ void wgpuCommandEncoderCopyTextureToBuffer (WGPUCommandEncoder commandEncoder, c
     );
 }
 void wgpuCommandEncoderCopyTextureToTexture(WGPUCommandEncoder commandEncoder, const WGPUTexelCopyTextureInfo* source, const WGPUTexelCopyTextureInfo* destination, const WGPUExtent3D* copySize){
-    
+    ++commandEncoder->encodedCommandCount;
     ce_trackTexture(
         commandEncoder,
         source->texture,
@@ -4785,6 +4826,7 @@ void wgpuComputePassEncoderSetBindGroup(WGPUComputePassEncoder cpe, uint32_t gro
 
 WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder commandEncoder){
     WGPUComputePassEncoder ret = RL_CALLOC(1, sizeof(WGPUComputePassEncoderImpl));
+    ++commandEncoder->encodedCommandCount;
     ret->refCount = 2;
     WGPUComputePassEncoderSet_add(&commandEncoder->referencedCPs, ret);
 
@@ -4948,6 +4990,7 @@ void wgpuSurfacePresent(WGPUSurface surface){
     WGPUFence finalTransitionFence = surface->device->frameCaches[cacheIndex].finalTransitionFence;
     wgpuFenceAddRef(finalTransitionFence);
     device->functions.vkQueueSubmit(surface->device->queue->graphicsQueue, 1, &cbsinfo, finalTransitionFence->fence);
+    
     finalTransitionFence->state = WGPUFenceState_InUse;
     
     WGPUCommandBufferVector* cmdBuffers = PendingCommandBufferMap_get(&surface->device->queue->pendingCommandBuffers[cacheIndex], (void*)finalTransitionFence);
@@ -6080,7 +6123,7 @@ void wgpuCommandEncoderWriteTimestamp(WGPUCommandEncoder commandEncoder, WGPUQue
     commandEncoder->device->functions.vkCmdWriteTimestamp(commandEncoder->buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, querySet->queryPool, queryIndex);
 }
 void wgpuCommandEncoderAddRef(WGPUCommandEncoder commandEncoder) {
-    
+    ++commandEncoder->refCount;
 }
 
 // Stubs for missing Methods of ComputePassEncoder
