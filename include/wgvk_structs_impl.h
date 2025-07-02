@@ -2,7 +2,7 @@
 #define WGPU_STRUCTS_IMPL_H
 #include <wgvk.h>
 #include <external/VmaUsage.h>
-#include <config.h>
+#include <wgvk_config.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -1742,7 +1742,7 @@ typedef struct WGPUBufferImpl{
 }WGPUBufferImpl;
 
 typedef struct WGPUBottomLevelAccelerationStructureImpl {
-    VkDevice device;
+    WGPUDevice device;
     VkAccelerationStructureKHR accelerationStructure;
     VkDeviceMemory accelerationStructureMemory;
     VkBuffer scratchBuffer;
@@ -1753,7 +1753,7 @@ typedef struct WGPUBottomLevelAccelerationStructureImpl {
 typedef WGPUBottomLevelAccelerationStructureImpl *WGPUBottomLevelAccelerationStructure;
 
 typedef struct WGPUTopLevelAccelerationStructureImpl {
-    VkDevice device;
+    WGPUDevice device;
     VkAccelerationStructureKHR accelerationStructure;
     VkDeviceMemory accelerationStructureMemory;
     VkBuffer scratchBuffer;
@@ -2432,7 +2432,7 @@ typedef struct WGPUQuerySetImpl{
 
 #endif // WGPU_VALIDATION_ENABLED
 
-VkQueryType toVulkanQueryType(WGPUQueryType type){
+static inline VkQueryType toVulkanQueryType(WGPUQueryType type){
     switch(type){
         case WGPUQueryType_Occlusion:return VK_QUERY_TYPE_OCCLUSION;
         case WGPUQueryType_Timestamp:return VK_QUERY_TYPE_TIMESTAMP;
@@ -2485,7 +2485,7 @@ static inline VkImageUsageFlags toVulkanTextureUsage(WGPUTextureUsage usage, WGP
 
     return vkUsage;
 }
-WGPUCompositeAlphaMode fromVulkanCompositeAlphaMode(VkCompositeAlphaFlagBitsKHR vkFlags){
+static inline WGPUCompositeAlphaMode fromVulkanCompositeAlphaMode(VkCompositeAlphaFlagBitsKHR vkFlags){
     if(vkFlags & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR){
         return WGPUCompositeAlphaMode_Opaque;
     }
@@ -2500,12 +2500,13 @@ WGPUCompositeAlphaMode fromVulkanCompositeAlphaMode(VkCompositeAlphaFlagBitsKHR 
     }
     return WGPUCompositeAlphaMode_Force32;
 }
-VkCompositeAlphaFlagsKHR toVulkanCompositeAlphaMode(WGPUCompositeAlphaMode wacm){
+static inline VkCompositeAlphaFlagsKHR toVulkanCompositeAlphaMode(WGPUCompositeAlphaMode wacm){
     switch(wacm){
         case WGPUCompositeAlphaMode_Opaque: return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         case WGPUCompositeAlphaMode_Premultiplied: return VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
         case WGPUCompositeAlphaMode_Unpremultiplied: return VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
         case WGPUCompositeAlphaMode_Inherit: return VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+        case WGPUCompositeAlphaMode_Auto: return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         default: rg_unreachable();
     }
     return 0;

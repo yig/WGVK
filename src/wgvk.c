@@ -798,9 +798,10 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     char nullTerminatedRequestedLayers[64][64] = {0};
     const char* nullTerminatedRequestedLayerPointers[64] = {0};
     uint32_t requestedAvailableLayerCount = 0;
-    for(uint32_t i = 0;i < availableLayerCount;i++){
-        printf("%s\n", availableLayers[i].layerName);
-    }
+    
+    //for(uint32_t i = 0;i < availableLayerCount;i++){
+    //    printf("%s\n", availableLayers[i].layerName);
+    //}
     
     WGPUInstanceLayerSelection* ils = NULL;
     int debugUtilsAvailable = 0; // Check if debug utils was actually enabled
@@ -836,8 +837,8 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         // TODO: Handle other potential structs in nextInChain if necessary
     }
     else {
-        nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_PROFILING_framerate";
-        ++requestedAvailableLayerCount;
+        //nullTerminatedRequestedLayerPointers[requestedAvailableLayerCount] = "VK_LAYER_PROFILING_framerate";
+        //++requestedAvailableLayerCount;
     }
     VkValidationFeaturesEXT validationFeatures zeroinit;
     VkValidationFeatureEnableEXT enables[] = {
