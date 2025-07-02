@@ -65,7 +65,6 @@ endif()
 if(WGVK_USE_VMA)
     list(APPEND WGVK_CORE_SRC_LIST "src/vma_impl.cpp")
 endif()
-
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-DNDEBUG -g3 -O3")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-DNDEBUG -g3 -O3")
 
@@ -147,7 +146,7 @@ if(WIN32)
 elseif(APPLE)
     target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_METAL_SURFACE=1)
     target_link_libraries(${WGVK_PRIMARY_TARGET_NAME} PUBLIC "-framework Cocoa" "-framework Metal" "-framework QuartzCore")
-elseif(UNIX)
+elseif(UNIX AND NOT ANDROID)
     find_package(PkgConfig QUIET)
         
     pkg_check_modules(WAYLAND_CLIENT QUIET wayland-client)
@@ -164,6 +163,9 @@ elseif(UNIX)
         target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_XLIB_SURFACE=1)
         target_link_libraries(${WGVK_PRIMARY_TARGET_NAME} PUBLIC X11::X11)
     endif()
+endif()
+if(ANDROID)
+  target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_ANDROID_SURFACE=1)
 endif()
 
 
