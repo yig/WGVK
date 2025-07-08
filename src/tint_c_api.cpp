@@ -1,3 +1,4 @@
+#include "src/tint/lang/core/ir/transform/substitute_overrides.h"
 #include "src/tint/lang/wgsl/ast/identifier_expression.h"
 #include "src/tint/lang/wgsl/ast/templated_identifier.h"
 #include "src/tint/lang/wgsl/ast/var.h"
@@ -270,12 +271,23 @@ RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL *source) {
 
     size_t length = (source->code.length == WGPU_STRLEN) ? std::strlen(source->code.data) : source->code.length;
     tint::Source::File file("<not a file>", std::string_view(source->code.data, source->code.data + length));
-    
+
     tint::wgsl::reader::Options options{};
     tint::Program prog = tint::wgsl::reader::Parse(&file, options);
     tint::Result<tint::core::ir::Module> maybeModule = tint::wgsl::reader::ProgramToLoweredIR(prog);
+    
     if(maybeModule == tint::Success){
-        tint::core::ir::Module module(std::move(maybeModule.Get()));
+        
+        
+        //tint::core::ir::transform::SubstituteOverridesConfig cfg;
+        //auto& inputProgram = prog;
+        //cfg.map = std::move();
+        //auto substituteOverridesResult =
+        //tint::core::ir::transform::SubstituteOverrides(ir.Get(), cfg);
+        //DAWN_INVALID_IF(substituteOverridesResult != tint::Success,
+        //                        "Pipeline override substitution (IR) failed:\n%s",
+        //                        substituteOverridesResult.Failure().reason);
+        //tint::core::ir::Module module(std::move(maybeModule.Get()));
         tint::spirv::writer::Options options{};
 
         tint::Result<tint::spirv::writer::Output> spirvMaybe = tint::spirv::writer::Generate(module, options);

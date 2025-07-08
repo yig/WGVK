@@ -223,9 +223,11 @@ wgpu_base wgpu_init(){
     surfaceChainWayland.surface = native_surface;
     WGPUChainedStruct* surfaceChain = NULL;
     if(x11_window == 0){
+        printf("Using wayland\n");
         surfaceChain = (WGPUChainedStruct*)&surfaceChainWayland;
     }
     else{
+        printf("Using X11\n");
         surfaceChain = (WGPUChainedStruct*)&surfaceChainX11;
     }
     #else

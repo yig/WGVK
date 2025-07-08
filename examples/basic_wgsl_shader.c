@@ -1,9 +1,11 @@
+#ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+#endif
+
 #include "common.h"
 #include <stdlib.h>
 #include <math.h>
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
+
 
 // The WGSL shader source remains the same.
 const char wgslSource[] = R"(
@@ -44,6 +46,7 @@ typedef struct {
 uint64_t stamp;
 uint64_t frameCount = 0;
 uint64_t totalFrameCount = 0;
+int resized = 0;
 
 void main_loop(void* user_data) {
     Context* ctx = (Context*)user_data;
@@ -56,9 +59,14 @@ void main_loop(void* user_data) {
     wgpuSurfaceGetCurrentTexture(ctx->base.surface, &surfaceTexture);
 
     // The surface must be valid to draw.
-    if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) {
+    
+    //printf("Size: %d x %d\n", width, height);
+    
+    if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal || resized) {
+        resized = 0;
         int width, height;
         glfwGetWindowSize(ctx->base.window, &width, &height);
+        
         WGPUSurfaceCapabilities caps = {0};
         WGPUPresentMode desiredPresentMode = WGPUPresentMode_Immediate;
 
@@ -71,7 +79,7 @@ void main_loop(void* user_data) {
             .width = width,
             .height = height
         };
-
+        
         wgpuSurfaceConfigure(ctx->base.surface, &surfaceConfig);
         return;
     }
@@ -150,12 +158,15 @@ void main_loop(void* user_data) {
         frameCount = 0;
     }
 }
-
+void resizeCallback(GLFWwindow* window, int width, int height){
+    resized = 1;
+}
 
 int main() {
     Context* ctx = (Context*)calloc(1, sizeof(Context));
     stamp = nanoTime();
     ctx->base = wgpu_init();
+    glfwSetWindowSizeCallback(ctx->base.window, resizeCallback);
     if (!ctx->base.device) {
         free(ctx);
         return 1;

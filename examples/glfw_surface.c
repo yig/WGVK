@@ -212,7 +212,7 @@ int main(){
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     WGPUSurfaceCapabilities caps = {0};
-    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Mailbox;
+    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Immediate;
     WGPUSurface surface = wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
@@ -386,13 +386,13 @@ int main(){
         wgpuRenderPassEncoderRelease(rpenc);
         wgpuTextureViewRelease(surfaceView);
         wgpuSurfacePresent(surface);
-        //++frameCount;
-        //uint64_t nextStamp = nanoTime();
-        //if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
-        //    stamp = nextStamp;
-        //    printf("FPS: %llu\n", (unsigned long long)frameCount);
-        //    frameCount = 0;
-        //}
+        ++frameCount;
+        uint64_t nextStamp = nanoTime();
+        if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
+            stamp = nextStamp;
+            printf("FPS: %llu\n", (unsigned long long)frameCount);
+            frameCount = 0;
+        }
     }
     wgpuSurfaceRelease(surface);
 }

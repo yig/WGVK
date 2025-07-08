@@ -140,7 +140,7 @@ int main(){
 
     int width, height;
     WGPUSurfaceCapabilities caps = {0};
-    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Immediate;
+    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Mailbox;
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
     

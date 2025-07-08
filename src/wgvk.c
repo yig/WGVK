@@ -1414,6 +1414,16 @@ WGPUQueue wgpuDeviceGetQueue(WGPUDevice device){
 
 WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor* desc){
     //vmaCreateAllocator(const VmaAllocatorCreateInfo * _Nonnull pCreateInfo, VmaAllocator  _Nullable * _Nonnull pAllocator)
+    if(desc->usage & WGPUBufferUsage_MapRead){
+        if(desc->usage & ~(WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead)){
+            DeviceCallback(device, WGPUErrorType_Validation, STRVIEW("WGPUBufferUsage_MapRead used with something other than WGPUBufferUsage_CopyDst"));
+        }
+    }
+    if(desc->usage & WGPUBufferUsage_MapWrite){
+        if(desc->usage & ~(WGPUBufferUsage_CopySrc | WGPUBufferUsage_MapWrite)){
+            DeviceCallback(device, WGPUErrorType_Validation, STRVIEW("WGPUBufferUsage_MapWrite used with something other than WGPUBufferUsage_CopySrc"));
+        }
+    }
     WGPUBuffer wgpuBuffer = RL_CALLOC(1, sizeof(WGPUBufferImpl));
 
     uint32_t cacheIndex = device->submittedFrames % framesInFlight;
@@ -1424,11 +1434,12 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor*
     wgpuBuffer->usage = desc->usage;
     
     
-    VkBufferCreateInfo bufferDesc zeroinit;
-    bufferDesc.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferDesc.size = desc->size;
-    bufferDesc.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferDesc.usage = toVulkanBufferUsage(desc->usage);
+    const VkBufferCreateInfo bufferDesc = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = desc->size,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .usage = toVulkanBufferUsage(desc->usage),
+    };
     
     VkMemoryPropertyFlags propertyToFind = 0;
     if(desc->usage & (WGPUBufferUsage_MapRead | WGPUBufferUsage_MapWrite)){
@@ -5064,6 +5075,9 @@ void wgpuSurfacePresent(WGPUSurface surface){
         .pImageIndices = &surface->activeImageIndex,
     };
     VkResult presentRes = device->functions.vkQueuePresentKHR(surface->device->queue->presentQueue, &presentInfo);
+    if(presentRes != VK_SUCCESS){
+        fprintf(stderr, "vkQueuePresentKHR returned %s\n", vkErrorString(presentRes));
+    }
     wgpuDeviceTick(surface->device);
 }
 void wgpuDeviceTick(WGPUDevice device){
