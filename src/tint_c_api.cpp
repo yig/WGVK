@@ -287,7 +287,7 @@ RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL *source) {
         //DAWN_INVALID_IF(substituteOverridesResult != tint::Success,
         //                        "Pipeline override substitution (IR) failed:\n%s",
         //                        substituteOverridesResult.Failure().reason);
-        //tint::core::ir::Module module(std::move(maybeModule.Get()));
+        tint::core::ir::Module module(std::move(maybeModule.Get()));
         tint::spirv::writer::Options options{};
 
         tint::Result<tint::spirv::writer::Output> spirvMaybe = tint::spirv::writer::Generate(module, options);
