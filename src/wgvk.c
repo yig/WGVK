@@ -7048,7 +7048,7 @@ RGAPI void releaseAllAndClear(ResourceUsage* resourceUsage){
 // WGPU Raytracing Begin =======================
 
 
-
+/*
 WGPUTopLevelAccelerationStructure wgpuDeviceCreateTopLevelAccelerationStructure(WGPUDevice device, const WGPUTopLevelAccelerationStructureDescriptor *descriptor) {
     WGPUTopLevelAccelerationStructureImpl *impl = RL_CALLOC(1, sizeof(WGPUTopLevelAccelerationStructureImpl));
     impl->device = device;
@@ -7071,7 +7071,7 @@ WGPUTopLevelAccelerationStructure wgpuDeviceCreateTopLevelAccelerationStructure(
 
     WGPUBufferDescriptor instanceBufferDescriptor = {
         .size = instanceBufferSize,
-        .usage = WGPUBufferUsage_ShaderDeviceAddress | WGPUBufferUsage_AccelerationStructureInput,
+        .usage = WGPUBufferUsage_Raytracing,
     };
     impl->instancesBuffer = wgpuDeviceCreateBuffer(device, &instanceBufferDescriptor);
 
@@ -7208,7 +7208,6 @@ WGPUTopLevelAccelerationStructure wgpuDeviceCreateTopLevelAccelerationStructure(
     device->functions.vkQueueSubmit(device->queue->graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
     return impl;
 }
-
 WGPUBottomLevelAccelerationStructure wgpuDeviceCreateBottomLevelAccelerationStructure(WGPUDevice device, const WGPUBottomLevelAccelerationStructureDescriptor *descriptor) {
     WGPUBottomLevelAccelerationStructureImpl *impl = RL_CALLOC(1, sizeof(WGPUBottomLevelAccelerationStructureImpl));
     impl->device = device;
@@ -7348,25 +7347,59 @@ WGPUBottomLevelAccelerationStructure wgpuDeviceCreateBottomLevelAccelerationStru
     device->functions.vkQueueWaitIdle(device->queue->graphicsQueue);
     return impl;
 }
+*/
 
+//DEFINE_VECTOR(static inline, VkAccelerationStructureBuildGeometryInfoKHR, VkAccelerationStructureBuildGeometryInfoKHRVector)
 
+WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContainer(WGPUDevice device, const WGPURayTracingAccelerationContainerDescriptor* descriptor){
+    WGPURayTracingAccelerationContainer ret = RL_CALLOC(1, sizeof(WGPURayTracingAccelerationContainerImpl));
+    ret->level = descriptor->level;
+    ret->device = device;
+    wgpuDeviceAddRef(device);
 
+    VkAccelerationStructureBuildGeometryInfoKHR geometryInfoVulkan = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+    };// = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureBuildGeometryInfoKHR));
 
+    VkAccelerationStructureGeometryKHR* geometries = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureGeometryKHR));
 
+    VkAccelerationStructureBuildRangeInfoKHR brinfo;
+    
+    VkAabbPositionsKHR dummy;
+    for(uint32_t i = 0;i < descriptor->geometryCount;i++){
+        geometries[i].sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        switch(descriptor->geometries[i].type){
 
+            case WGPURayTracingAccelerationGeometryType_AABBs:{
+                geometries[i].geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
+                geometries[i].geometry.aabbs.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR;
+                geometries[i].geometry.aabbs.data.deviceAddress = descriptor->geometries[i].aabb.buffer->address;
+                geometries[i].geometry.aabbs.stride = descriptor->geometries[i].aabb.stride;
+            }break;
+            case WGPURayTracingAccelerationGeometryType_Triangles:{
+                geometries[i].geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+                geometries[i].geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+                geometries[i].geometry.triangles.vertexData.deviceAddress = descriptor->geometries[i].vertex.buffer->address;
+                geometries[i].geometry.triangles.vertexFormat = toVulkanVertexFormat(descriptor->geometries[i].vertex.format);
+            }break;
+            default:
+        }
+    }
 
+    VkAccelerationStructureBuildRangeInfoKHR** buildRangeInfos;
+    geometryInfoVulkan.dstAccelerationStructure = ret->accelerationStructure;
+    geometryInfoVulkan.geometryCount = descriptor->geometryCount;
+    geometryInfoVulkan.pGeometries[0];
+    
 
-
-
-
-
-
-
-
-
-
-
-
+    device->functions.vkBuildAccelerationStructuresKHR(
+        device->device,
+        VK_NULL_HANDLE,
+        descriptor->geometryCount,
+        &geometryInfoVulkan,
+        (const VkAccelerationStructureBuildRangeInfoKHR**)buildRangeInfos
+    );
+}
 // WGPU Raytracing End =======================
 
 

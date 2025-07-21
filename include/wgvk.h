@@ -102,8 +102,10 @@ typedef struct WGPUFenceImpl* WGPUFence;
 typedef struct WGPURenderPipelineImpl* WGPURenderPipeline;
 typedef struct WGPUShaderModuleImpl* WGPUShaderModule;
 typedef struct WGPUComputePipelineImpl* WGPUComputePipeline;
-typedef struct WGPUTopLevelAccelerationStructureImpl* WGPUTopLevelAccelerationStructure;
-typedef struct WGPUBottomLevelAccelerationStructureImpl* WGPUBottomLevelAccelerationStructure;
+typedef struct WGPURayTracingAccelerationContainerImpl* WGPURayTracingAccelerationContainer;
+typedef struct WGPURayTracingShaderBindingTableImpl* WGPURayTracingShaderBindingTable;
+//typedef struct WGPUTopLevelAccelerationStructureImpl* WGPUTopLevelAccelerationStructure;
+//typedef struct WGPUBottomLevelAccelerationStructureImpl* WGPUBottomLevelAccelerationStructure;
 typedef struct WGPURaytracingPipelineImpl* WGPURaytracingPipeline;
 typedef struct WGPURaytracingPassEncoderImpl* WGPURaytracingPassEncoder;
 
@@ -182,10 +184,11 @@ static const WGPUBufferUsage WGPUBufferUsage_Uniform = 0x0000000000000040;
 static const WGPUBufferUsage WGPUBufferUsage_Storage = 0x0000000000000080;
 static const WGPUBufferUsage WGPUBufferUsage_Indirect = 0x0000000000000100;
 static const WGPUBufferUsage WGPUBufferUsage_QueryResolve = 0x0000000000000200;
-static const WGPUBufferUsage WGPUBufferUsage_ShaderDeviceAddress = 0x0000000010000000;
-static const WGPUBufferUsage WGPUBufferUsage_AccelerationStructureInput = 0x0000000020000000;
+static const WGPUBufferUsage WGPUBufferUsage_ShaderDeviceAddress          = 0x0000000010000000;
+static const WGPUBufferUsage WGPUBufferUsage_AccelerationStructureInput   = 0x0000000020000000;
 static const WGPUBufferUsage WGPUBufferUsage_AccelerationStructureStorage = 0x0000000040000000;
-static const WGPUBufferUsage WGPUBufferUsage_ShaderBindingTable = 0x0000000080000000;
+static const WGPUBufferUsage WGPUBufferUsage_ShaderBindingTable           = 0x0000000080000000;
+static const WGPUBufferUsage WGPUBufferUsage_Raytracing                   = 0x00000000F0000000;
 
 typedef WGPUFlags WGPUColorWriteMask;
 static const WGPUColorWriteMask WGPUColorWriteMask_None = 0x0000000000000000;
@@ -777,6 +780,42 @@ typedef enum WGPUCompositeAlphaMode {
     WGPUCompositeAlphaMode_Force32 = 0x7FFFFFFF
 } WGPUCompositeAlphaMode WGPU_ENUM_ATTRIBUTE;
 
+typedef enum WGPURayTracingAccelerationGeometryType{
+    WGPURayTracingAccelerationGeometryType_Triangles = 0x00000001,
+    WGPURayTracingAccelerationGeometryType_AABBs     = 0x00000002,
+    WGPURayTracingAccelerationGeometryType_Force32   = 0x7FFFFFFF,
+}WGPURayTracingAccelerationGeometryType;
+
+typedef enum WGPURayTracingAccelerationContainerLevel{
+    WGPURayTracingAccelerationContainerLevel_Bottom = 0x00000001,
+    WGPURayTracingAccelerationContainerLevel_Top = 0x00000002,
+    WGPURayTracingAccelerationContainerLevel_Force32 = 0x7FFFFFFF,
+}WGPURayTracingAccelerationContainerLevel;
+
+typedef enum WGPURayTracingShaderBindingTableGroupType{
+    WGPURayTracingShaderBindingTableGroupType_General = 0x00000001,
+    WGPURayTracingShaderBindingTableGroupType_TrianglesHitGroup = 0x00000002,
+    WGPURayTracingShaderBindingTableGroupType_ProceduralHitGroup = 0x00000003,
+    WGPURayTracingShaderBindingTableGroupType_Force32 = 0x7FFFFFFF,
+}WGPURayTracingShaderBindingTableGroupType;
+
+typedef WGPUFlags WGPURayTracingAccelerationGeometryUsage;
+const static WGPURayTracingAccelerationGeometryUsage WGPURayTracingAccelerationGeometryUsage_Opaque = 0x00000001;
+const static WGPURayTracingAccelerationGeometryUsage WGPURayTracingAccelerationGeometryUsage_AllowAnyHit = 0x00000002;
+
+typedef WGPUFlags WGPURayTracingAccelerationInstanceUsage;
+const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_TriangleCullDisable = 0x00000001;
+const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_TriangleFrontCounterclockwise = 0x00000002;
+const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_ForceOpaque = 0x00000004;
+const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_ForceNoOpaque = 0x00000008;
+
+typedef WGPUFlags WGPURayTracingAccelerationContainerUsage;
+const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_AllowUpdate = 0x00000001;
+const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_PreferFastTrace = 0x00000002;
+const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_PreferFastBuild = 0x00000004;
+const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_LowMemory = 0x00000008;
+
+
 typedef struct WGPUChainedStruct {
     struct WGPUChainedStruct* next;
     WGPUSType sType;
@@ -1024,8 +1063,9 @@ typedef struct WGPUBindGroupEntry{
     uint64_t size;
     WGPUSampler sampler;
     WGPUTextureView textureView;
-    WGPUTopLevelAccelerationStructure accelerationStructure;
+    WGPURayTracingAccelerationContainer accelerationStructure;
 }WGPUBindGroupEntry;
+
 typedef struct WGPUTextureBindingLayout {
     WGPUChainedStruct * nextInChain;
     WGPUTextureSampleType sampleType;
@@ -1632,34 +1672,70 @@ typedef struct WGPURequestDeviceCallbackInfo {
     WGPU_NULLABLE void* userdata2;
 } WGPURequestDeviceCallbackInfo WGPU_STRUCT_ATTRIBUTE;
 
-typedef struct WGPUBottomLevelAccelerationStructureDescriptor {
-    WGPUBuffer vertexBuffer;          // Buffer containing vertex data
-    uint32_t vertexCount;             // Number of vertices
-    WGPUBuffer indexBuffer;           // Optional index buffer
-    uint32_t indexCount;              // Number of indices
-    size_t vertexStride;              // Size of each vertex
-}WGPUBottomLevelAccelerationStructureDescriptor;
+typedef struct WGPUTransform3DDescriptor{
+    float x;
+    float y;
+    float z;
+}WGPUTransform3DDescriptor;
+
+typedef struct WGPURayTracingAccelerationInstanceTransformDescriptor{
+    WGPUTransform3DDescriptor translation;
+    WGPUTransform3DDescriptor rotation;
+    WGPUTransform3DDescriptor scale;
+}WGPURayTracingAccelerationInstanceTransformDescriptor;
+
+typedef struct WGPURayTracingAccelerationGeometryVertexDescriptor{
+    WGPUBuffer buffer;
+    WGPUVertexFormat format;
+    uint32_t stride;
+    uint32_t offset;
+    uint32_t count;
+}WGPURayTracingAccelerationGeometryVertexDescriptor;
+
+typedef struct WGPURayTracingAccelerationGeometryIndexDescriptor{
+    WGPUBuffer buffer;
+    WGPUIndexFormat format;
+    uint32_t offset;
+    uint32_t count;
+}WGPURayTracingAccelerationGeometryIndexDescriptor;
+
+typedef struct WGPURayTracingAccelerationGeometryAABBDescriptor{
+    WGPUBuffer buffer;
+    uint32_t stride;
+    uint32_t offset;
+    uint32_t count;
+}WGPURayTracingAccelerationGeometryAABBDescriptor;
+
+typedef struct WGPURayTracingAccelerationGeometryDescriptor{
+    WGPURayTracingAccelerationGeometryUsage usage;
+    WGPURayTracingAccelerationGeometryType type;
+    WGPURayTracingAccelerationGeometryVertexDescriptor vertex;
+    WGPURayTracingAccelerationGeometryIndexDescriptor index;
+    WGPURayTracingAccelerationGeometryAABBDescriptor aabb;
+}WGPURayTracingAccelerationGeometryDescriptor;
 
 typedef struct WGPUTransformMatrix {
-    float    matrix[3][4];
+    float matrix[3][4];
 } WGPUTransformMatrix;
 
-typedef struct WGPUTopLevelAccelerationStructureDescriptor {
-    WGPUBottomLevelAccelerationStructure* bottomLevelAS;       // Array of bottom level acceleration structures
-    uint32_t blasCount;                                        // Number of BLAS instances
-    WGPUTransformMatrix* transformMatrices;                    // Optional transformation matrices
-    uint32_t* instanceCustomIndexes;                           // Optional custom instance indexes
-    uint32_t* instanceShaderBindingTableRecordOffsets;         // Optional SBT record offsets
-    void* instanceFlags;                                       // Optional instance flags
-}WGPUTopLevelAccelerationStructureDescriptor;
-#ifdef __cplusplus
-extern "C"{
-#endif
-WGPUTopLevelAccelerationStructure wgpuDeviceCreateTopLevelAccelerationStructure(WGPUDevice device, const WGPUTopLevelAccelerationStructureDescriptor *descriptor);
-WGPUBottomLevelAccelerationStructure wgpuDeviceCreateBottomLevelAccelerationStructure(WGPUDevice device, const WGPUBottomLevelAccelerationStructureDescriptor *descriptor);
-#ifdef __cplusplus
-}
-#endif
+typedef struct WGPURayTracingAccelerationInstanceDescriptor{
+    WGPURayTracingAccelerationInstanceUsage usage;
+    uint8_t mask;
+    uint32_t instanceId;
+    uint32_t instanceOffset;
+    WGPURayTracingAccelerationInstanceTransformDescriptor transform;
+    WGPUTransformMatrix transformMatrix;
+    WGPURayTracingAccelerationContainer geometryContainer;
+}WGPURayTracingAccelerationInstanceDescriptor;
+
+typedef struct WGPURayTracingAccelerationContainerDescriptor{
+    WGPURayTracingAccelerationContainerUsage usage;
+    WGPURayTracingAccelerationContainerLevel level;
+    uint32_t geometryCount;
+    uint32_t instanceCount;
+    WGPURayTracingAccelerationGeometryDescriptor* geometries;
+    WGPURayTracingAccelerationInstanceDescriptor* instances;
+}WGPURayTracingAccelerationContainerDescriptor;
 
 #ifdef __cplusplus
 extern "C"{
@@ -1750,9 +1826,9 @@ void wgpuSurfaceGetCurrentTexture             (WGPUSurface surface, WGPUSurfaceT
 void wgpuSurfacePresent                       (WGPUSurface surface);
 
 WGPURaytracingPassEncoder wgpuCommandEncoderBeginRaytracingPass(WGPUCommandEncoder enc);
-void wgpuCommandEncoderEndRaytracingPass(WGPURaytracingPassEncoder commandEncoder);
 WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder enc);
 void wgpuComputePassEncoderEnd(WGPUComputePassEncoder commandEncoder);
+void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder);
 WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, const WGPURenderPassDescriptor* rpdesc);
 
 WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, WGPURenderBundleEncoderDescriptor const * descriptor);
@@ -1768,6 +1844,7 @@ void wgpuRenderBundleEncoderSetVertexBuffer(WGPURenderBundleEncoder renderBundle
 void wgpuRenderBundleEncoderAddRef(WGPURenderBundleEncoder renderBundleEncoder) WGPU_FUNCTION_ATTRIBUTE;
 void wgpuRenderBundleEncoderRelease(WGPURenderBundleEncoder renderBundleEncoder) WGPU_FUNCTION_ATTRIBUTE;
 void wgpuRenderPassEncoderExecuteBundles(WGPURenderPassEncoder renderPassEncoder, size_t bundleCount, WGPURenderBundle const * bundles) WGPU_FUNCTION_ATTRIBUTE;
+
 #define WGPU_EXPORT
 // Missing Top-level function declarations
 WGPU_EXPORT void wgpuAdapterInfoFreeMembers(WGPUAdapterInfo value) WGPU_FUNCTION_ATTRIBUTE;

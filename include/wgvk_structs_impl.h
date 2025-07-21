@@ -1741,6 +1741,12 @@ typedef struct WGPUBufferImpl{
     WGPUFence latestFence;
 }WGPUBufferImpl;
 
+typedef struct WGPURayTracingAccelerationContainerImpl{
+    WGPUDevice device;
+    VkAccelerationStructureKHR accelerationStructure;
+    WGPURayTracingAccelerationContainerLevel level;
+}WGPURayTracingAccelerationContainerImpl;
+
 typedef struct WGPUBottomLevelAccelerationStructureImpl {
     WGPUDevice device;
     VkAccelerationStructureKHR accelerationStructure;
