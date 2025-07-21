@@ -1053,6 +1053,7 @@ WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, const WGPURequestAd
         .functionCalledOnWaitAny = wgpuCreateAdapter_impl,
         .freeUserData = RL_FREE
     };
+
     uint64_t id = instance->currentFutureId++; //atomic?
     FutureIDMap_put(&instance->g_futureIDMap, id, ret);
     return (WGPUFuture){ id };
@@ -1068,7 +1069,9 @@ static int cmp_uint32_(const void *a, const void *b) {
 
 static inline VkSemaphore CreateSemaphoreD(WGPUDevice device){
     VkSemaphore ret = NULL;
-    VkSemaphoreCreateInfo sci = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+    VkSemaphoreCreateInfo sci = {
+        VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+    };
     
     VkResult res = device->functions.vkCreateSemaphore(device->device, &sci, NULL, &ret);
     if(res != VK_SUCCESS){
@@ -1088,10 +1091,11 @@ static size_t sort_uniqueuints(uint32_t *arr, size_t count) {
     }
     return unique_count;
 }
+
 #define RG_SWAP(a, b) do { \
-    typeof(a) temp = (a); \
-    (a) = (b); \
-    (b) = temp; \
+    typeof(a) temp = (a);  \
+    (a) = (b);             \
+    (b) = temp;            \
 } while (0)
 
 typedef struct userdataforcreatedevice{
@@ -5092,6 +5096,35 @@ void wgpuDeviceTick(WGPUDevice device){
     wgpuCommandEncoderRelease(queue->presubmitCache);
     wgpuCommandBufferRelease(buffer);
     
+    {
+        const uint32_t toBeFinishedCacheIndex = device->submittedFrames % framesInFlight;
+        const VkPipelineStageFlags waitmask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        const uint32_t tsubmits = queue->syncState[toBeFinishedCacheIndex].submits;
+
+        if(PendingCommandBufferMap_get(&queue->pendingCommandBuffers[toBeFinishedCacheIndex], device->frameCaches[toBeFinishedCacheIndex].finalTransitionFence) == NULL){
+            VkSubmitInfo emptySubmit = {
+                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = queue->syncState[toBeFinishedCacheIndex].semaphores.data + tsubmits,
+                .pWaitDstStageMask = &waitmask
+            };
+            device->functions.vkQueueSubmit(device->queue->graphicsQueue, 1, &emptySubmit, device->frameCaches[toBeFinishedCacheIndex].finalTransitionFence->fence);
+            wgpuFenceAddRef(queue->device->frameCaches[toBeFinishedCacheIndex].finalTransitionFence);
+            queue->device->frameCaches[toBeFinishedCacheIndex].finalTransitionFence->state = WGPUFenceState_InUse;
+            WGPUCommandBufferVector insert;
+            WGPUCommandBufferVector_init(&insert);
+            PendingCommandBufferMap* pcmap = &queue->pendingCommandBuffers[toBeFinishedCacheIndex];
+            WGPUFence ftf = device->frameCaches[toBeFinishedCacheIndex].finalTransitionFence;
+            WGPUCommandBufferVector* inserted = PendingCommandBufferMap_get(pcmap, ftf);
+            if(inserted == NULL){
+                PendingCommandBufferMap_put(pcmap, ftf, insert);
+                inserted = PendingCommandBufferMap_get(pcmap, ftf);
+            }
+            WGPUCommandBufferVector_init(inserted);
+        }
+    }
+    
+    
     ++device->submittedFrames;
     #if USE_VMA_ALLOCATOR == 1
     vmaSetCurrentFrameIndex(device->allocator, device->submittedFrames % framesInFlight);
@@ -5138,6 +5171,7 @@ void wgpuDeviceTick(WGPUDevice device){
     device->queue->presubmitCache = wgpuDeviceCreateCommandEncoder(device, &cedesc);
     queue->syncState[cacheIndex].submits = 0;
 }
+
 WGPUSampler wgpuDeviceCreateSampler(WGPUDevice device, const WGPUSamplerDescriptor* descriptor){
     WGPUSampler ret = RL_CALLOC(1, sizeof(WGPUSamplerImpl));
     ret->refCount = 1;
@@ -5262,7 +5296,10 @@ void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder rpe, WGPUBuffer b
 
     RenderPassEncoder_PushCommand(rpe, &insert);
     
-    ce_trackBuffer(rpe->cmdEncoder, buffer, (BufferUsageSnap){VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT});
+    ce_trackBuffer(rpe->cmdEncoder, buffer, (BufferUsageSnap){
+        .stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 
+        .access = VK_ACCESS_INDEX_READ_BIT
+    });
 }
 void wgpuTextureViewAddRef(WGPUTextureView textureView){
     ++textureView->refCount;
@@ -5488,7 +5525,7 @@ static OptionalBarrier ru_trackBufferAndEmit(ResourceUsage* resourceUsage, WGPUB
         const OptionalBarrier ret = {
             .type = bt_buffer_barrier,
             .bufferBarrier = bufferBarrier,
-            .srcStage = rec->lastAccess,
+            .srcStage = rec->lastStage,
             .dstStage = usage.stage,
         };
         return ret;
@@ -5529,6 +5566,7 @@ static void encoderOptionalBarrierVk(VkCommandBuffer buffer, PFN_vkCmdPipelineBa
 
         default: return;
     }
+
     barrier_fn(
         buffer,
         barrier.srcStage,
@@ -6221,7 +6259,10 @@ WGPUBindGroupLayout wgpuComputePipelineGetBindGroupLayout(WGPUComputePipeline co
 void wgpuComputePipelineSetLabel(WGPUComputePipeline computePipeline, WGPUStringView label) {}
 
 // Stubs for missing Methods of Device
-WGPUFuture wgpuDeviceCreateComputePipelineAsync(WGPUDevice device, WGPUComputePipelineDescriptor const * descriptor, WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo) { return (WGPUFuture){0}; }
+WGPUFuture wgpuDeviceCreateComputePipelineAsync(WGPUDevice device, WGPUComputePipelineDescriptor const * descriptor, WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo) {
+
+    return (WGPUFuture){0};
+}
 WGPUQuerySet wgpuDeviceCreateQuerySet(WGPUDevice device, const WGPUQuerySetDescriptor* descriptor) {
     WGPUQuerySet ret = RL_CALLOC(1, sizeof(WGPUQuerySetImpl));
     ret->device = device;

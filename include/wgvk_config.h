@@ -1,42 +1,5 @@
-#ifndef CONFIG_H_INCLUDED
-#define CONFIG_H_INCLUDED
-
-
-#ifndef SUPPORT_WGSL_PARSER
-    //#define SUPPORT_WGSL_PARSER 1
-#endif
-
-#ifndef SUPPORT_GLSL_PARSER
-    #define SUPPORT_GLSL_PARSER 0
-#endif
-#ifndef SUPPORT_SDL2
-    #define SUPPORT_SDL2 0
-#endif
-#ifndef SUPPORT_GLFW
-    #define SUPPORT_GLFW 0
-#endif
-#if SUPPORT_SDL3 == 0 && SUPPORT_SDL2 == 0 && SUPPORT_GLFW == 0 && SUPPORT_RGFW == 0
-    #define FORCE_HEADLESS 1
-#endif
-#if SUPPORT_SDL3 == 1// && SUPPORT_SDL2 == 0 && SUPPORT_GLFW == 0
-    #define MAIN_WINDOW_SDL3
-#elif SUPPORT_GLFW == 0 && SUPPORT_SDL2 == 1
-    #define MAIN_WINDOW_SDL2
-#elif SUPPORT_GLFW == 1 && SUPPORT_SDL2 == 0
-    #define MAIN_WINDOW_GLFW
-#elif SUPPORT_GLFW == 1 && SUPPORT_SDL2 == 1
-    #define MAIN_WINDOW_SDL2
-#elif SUPPORT_RGFW == 1
-    #define MAIN_WINDOW_RGFW
-#else
-
-#endif
-//#if !defined(MAIN_WINDOW_SDL2) && !defined(MAIN_WINDOW_GLFW)
-//    #define MAIN_WINDOW_GLFW
-//#endif
-#if defined(MAIN_WINDOW_SDL2) && defined(MAIN_WINDOW_GLFW)
-#error only_one_main_window_type_is_supported
-#endif
+#ifndef WGVK_CONFIG_H_INCLUDED
+#define WGVK_CONFIG_H_INCLUDED
 
 
 // Detect and define DEFAULT_BACKEND based on the target platform
@@ -62,21 +25,6 @@
     #pragma message("Unknown platform. Defaulting to Vulkan as the backend.")
 #endif
 
-// The RENDERBATCH_SIZE is how many vertices can be batched at most
-// It must be a multiple of 12 to guarantee that RL_LINES, RL_TRIANGLES and RL_QUADS 
-// trigger an overflow on a completed shape. 
-// Because of that, it needs to be a multiple of both 3 and 4
-
-#ifndef RENDERBATCH_SIZE_MULTIPLIER
-    #define RENDERBATCH_SIZE_MULTIPLIER 10
-#endif
-
-#define RENDERBATCH_SIZE (RENDERBATCH_SIZE_MULTIPLIER * 12)
-
-#ifndef VERTEX_BUFFER_CACHE_SIZE
-    #define VERTEX_BUFFER_CACHE_SIZE 128
-#endif
-
 #ifndef MAX_COLOR_ATTACHMENTS
     #define MAX_COLOR_ATTACHMENTS 4
 #endif
@@ -85,7 +33,6 @@
 #endif
 #define VULKAN_USE_DYNAMIC_RENDERING 1
 #define VULKAN_ENABLE_RAYTRACING 1
-#define RAYGPU_NO_INLINE_FUNCTIONS 1
 
 #if !defined(RL_MALLOC) && !defined(RL_CALLOC) && !defined(RL_REALLOC) && !defined(RL_FREE)
 #define RL_MALLOC  malloc
