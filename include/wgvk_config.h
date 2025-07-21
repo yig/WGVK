@@ -84,7 +84,7 @@
     #define USE_VMA_ALLOCATOR 0
 #endif
 #define VULKAN_USE_DYNAMIC_RENDERING 1
-#define VULKAN_ENABLE_RAYTRACING 0
+#define VULKAN_ENABLE_RAYTRACING 1
 #define RAYGPU_NO_INLINE_FUNCTIONS 1
 
 #if !defined(RL_MALLOC) && !defined(RL_CALLOC) && !defined(RL_REALLOC) && !defined(RL_FREE)

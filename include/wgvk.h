@@ -1340,6 +1340,7 @@ typedef struct WGPUVertexState {
     size_t bufferCount;
     const WGPUVertexBufferLayout* buffers;
 } WGPUVertexState;
+
 typedef enum WGPUBlendOperation {
     WGPUBlendOperation_Undefined = 0x00000000,
     WGPUBlendOperation_Add = 0x00000001,
@@ -1428,6 +1429,7 @@ typedef struct WGPUFragmentState {
     size_t targetCount;
     const WGPUColorTargetState* targets;
 } WGPUFragmentState;
+
 typedef struct WGPUCommandBufferDescriptor {
     WGPUChainedStruct * nextInChain;
     WGPUStringView label;
@@ -1635,16 +1637,20 @@ typedef struct WGPUBottomLevelAccelerationStructureDescriptor {
     uint32_t vertexCount;             // Number of vertices
     WGPUBuffer indexBuffer;           // Optional index buffer
     uint32_t indexCount;              // Number of indices
-    size_t vertexStride;        // Size of each vertex
+    size_t vertexStride;              // Size of each vertex
 }WGPUBottomLevelAccelerationStructureDescriptor;
+
+typedef struct WGPUTransformMatrix {
+    float    matrix[3][4];
+} WGPUTransformMatrix;
 
 typedef struct WGPUTopLevelAccelerationStructureDescriptor {
     WGPUBottomLevelAccelerationStructure* bottomLevelAS;       // Array of bottom level acceleration structures
     uint32_t blasCount;                                        // Number of BLAS instances
-    void* transformMatrices;                                   // Optional transformation matrices
+    WGPUTransformMatrix* transformMatrices;                    // Optional transformation matrices
     uint32_t* instanceCustomIndexes;                           // Optional custom instance indexes
     uint32_t* instanceShaderBindingTableRecordOffsets;         // Optional SBT record offsets
-    void* instanceFlags;               // Optional instance flags
+    void* instanceFlags;                                       // Optional instance flags
 }WGPUTopLevelAccelerationStructureDescriptor;
 #ifdef __cplusplus
 extern "C"{

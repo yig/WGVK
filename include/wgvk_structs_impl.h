@@ -1744,24 +1744,18 @@ typedef struct WGPUBufferImpl{
 typedef struct WGPUBottomLevelAccelerationStructureImpl {
     WGPUDevice device;
     VkAccelerationStructureKHR accelerationStructure;
-    VkDeviceMemory accelerationStructureMemory;
-    VkBuffer scratchBuffer;
-    VkDeviceMemory scratchBufferMemory;
-    VkBuffer accelerationStructureBuffer;
-    VkDeviceMemory accelerationStructureBufferMemory;
+    
+    WGPUBuffer scratchBuffer;
+    WGPUBuffer accelerationStructureBuffer;
 } WGPUBottomLevelAccelerationStructureImpl;
 typedef WGPUBottomLevelAccelerationStructureImpl *WGPUBottomLevelAccelerationStructure;
 
 typedef struct WGPUTopLevelAccelerationStructureImpl {
     WGPUDevice device;
     VkAccelerationStructureKHR accelerationStructure;
-    VkDeviceMemory accelerationStructureMemory;
-    VkBuffer scratchBuffer;
-    VkDeviceMemory scratchBufferMemory;
-    VkBuffer accelerationStructureBuffer;
-    VkDeviceMemory accelerationStructureBufferMemory;
-    VkBuffer instancesBuffer;
-    VkDeviceMemory instancesBufferMemory;
+    WGPUBuffer scratchBuffer;
+    WGPUBuffer accelerationStructureBuffer;
+    WGPUBuffer instancesBuffer;
 } WGPUTopLevelAccelerationStructureImpl;
 
 static inline uint64_t identity_sdf(uint64_t x){

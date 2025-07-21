@@ -118,7 +118,7 @@ int main(){
         #ifdef NDEBUG
         NULL,
         #else
-        NULL,//&lsel.chain,
+        &lsel.chain,
         #endif
         .capabilities = {0}
     };
