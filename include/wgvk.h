@@ -188,7 +188,7 @@ static const WGPUBufferUsage WGPUBufferUsage_ShaderDeviceAddress          = 0x00
 static const WGPUBufferUsage WGPUBufferUsage_AccelerationStructureInput   = 0x0000000020000000;
 static const WGPUBufferUsage WGPUBufferUsage_AccelerationStructureStorage = 0x0000000040000000;
 static const WGPUBufferUsage WGPUBufferUsage_ShaderBindingTable           = 0x0000000080000000;
-static const WGPUBufferUsage WGPUBufferUsage_Raytracing                   = 0x00000000F0000000;
+static const WGPUBufferUsage WGPUBufferUsage_Raytracing                   = 0x00000000F0000080;
 
 typedef WGPUFlags WGPUColorWriteMask;
 static const WGPUColorWriteMask WGPUColorWriteMask_None = 0x0000000000000000;
@@ -1830,6 +1830,10 @@ WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder enc
 void wgpuComputePassEncoderEnd(WGPUComputePassEncoder commandEncoder);
 void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder);
 WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, const WGPURenderPassDescriptor* rpdesc);
+    
+void wgpuCommandEncoderBuildRayTracingAccelerationContainer(WGPUCommandEncoder encoder, WGPURayTracingAccelerationContainer container);
+void wgpuCommandEncoderCopyRayTracingAccelerationContainer(WGPUCommandEncoder encoder, WGPURayTracingAccelerationContainer source, WGPURayTracingAccelerationContainer dest);
+void wgpuCommandEncoderUpdateRayTracingAccelerationContainer(WGPUCommandEncoder encoder, WGPURayTracingAccelerationContainer container);
 
 WGPURenderBundleEncoder wgpuDeviceCreateRenderBundleEncoder(WGPUDevice device, WGPURenderBundleEncoderDescriptor const * descriptor);
 WGPURenderBundle wgpuRenderBundleEncoderFinish(WGPURenderBundleEncoder renderBundleEncoder, WGPU_NULLABLE WGPURenderBundleDescriptor const * descriptor);
@@ -1979,6 +1983,8 @@ WGPU_EXPORT void wgpuTextureSetLabel(WGPUTexture texture, WGPUStringView label) 
 // Missing Methods of TextureView
 WGPU_EXPORT void wgpuTextureViewSetLabel(WGPUTextureView textureView, WGPUStringView label) WGPU_FUNCTION_ATTRIBUTE;
 
+
+WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContainer(WGPUDevice device, const WGPURayTracingAccelerationContainerDescriptor* descriptor);
 
 
 void wgpuInstanceAddRef                       (WGPUInstance instance);

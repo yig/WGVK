@@ -181,11 +181,13 @@ if(WGVK_BUILD_EXAMPLES)
     add_executable(basic_compute "examples/basic_compute.c")
     add_executable(rgfw_surface "examples/rgfw_surface.c")
     add_executable(basic_wgsl_shader "examples/basic_wgsl_shader.c")
+    add_executable(raytracing "examples/raytracing.c")
     
     # Examples always link against the final `wgvk` target. Thanks to the fix above,
     # they will now correctly inherit all necessary compile definitions.
     target_link_libraries(glfw_surface PUBLIC wgvk glfw)
     target_link_libraries(basic_wgsl_shader PUBLIC wgvk glfw)
+    target_link_libraries(raytracing PUBLIC wgvk glfw)
     target_link_libraries(basic_compute PUBLIC wgvk)
     target_link_libraries(rgfw_surface PUBLIC wgvk)
 endif()

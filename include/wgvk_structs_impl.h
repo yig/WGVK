@@ -1742,12 +1742,20 @@ typedef struct WGPUBufferImpl{
 }WGPUBufferImpl;
 
 typedef struct WGPURayTracingAccelerationContainerImpl{
-    WGPUDevice device;
     VkAccelerationStructureKHR accelerationStructure;
+    WGPUDevice device;
+    uint32_t geometryCount;
+    WGPUBuffer* inputGeometryBuffers;
+    VkAccelerationStructureGeometryKHR* geometries;
+    VkAccelerationStructureBuildRangeInfoKHR* buildRangeInfos;
+    uint32_t* primitiveCounts;
+    WGPUBuffer accelerationStructureBuffer;
+    WGPUBuffer updateScratchBuffer;
+    WGPUBuffer buildScratchBuffer;
     WGPURayTracingAccelerationContainerLevel level;
 }WGPURayTracingAccelerationContainerImpl;
 
-typedef struct WGPUBottomLevelAccelerationStructureImpl {
+/*typedef struct WGPUBottomLevelAccelerationStructureImpl {
     WGPUDevice device;
     VkAccelerationStructureKHR accelerationStructure;
     
@@ -1762,7 +1770,7 @@ typedef struct WGPUTopLevelAccelerationStructureImpl {
     WGPUBuffer scratchBuffer;
     WGPUBuffer accelerationStructureBuffer;
     WGPUBuffer instancesBuffer;
-} WGPUTopLevelAccelerationStructureImpl;
+} WGPUTopLevelAccelerationStructureImpl;*/
 
 static inline uint64_t identity_sdf(uint64_t x){
     return x;
@@ -2447,7 +2455,9 @@ static inline bool isDepthFormat(WGPUTextureFormat format){
     format == WGPUTextureFormat_Depth32Float ||
     format == WGPUTextureFormat_Depth32FloatStencil8;
 }
-
+static inline VkAccelerationStructureTypeKHR toVulkanAccelerationStructureLevel(WGPURayTracingAccelerationContainerLevel level){
+    return (level == WGPURayTracingAccelerationContainerLevel_Top) ? VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR : VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+}
 static inline bool isDepthStencilFormat(WGPUTextureFormat format){
     return 
     format == WGPUTextureFormat_Depth24PlusStencil8 ||
