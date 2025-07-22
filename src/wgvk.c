@@ -1228,6 +1228,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     retDevice->refCount = 1;
     WGPUQueue retQueue = RL_CALLOC(1, sizeof(WGPUQueueImpl));
     retQueue->refCount = 0;
+    __builtin_dump_struct(&createInfo, printf);
     VkResult dcresult = vkCreateDevice(adapter->physicalDevice, &createInfo, NULL, &(retDevice->device));
     struct VolkDeviceTable table = {0};
 
@@ -1526,7 +1527,7 @@ void wgpuBufferMap(WGPUBuffer buffer, WGPUMapMode mapmode, size_t offset, size_t
                 VkResult mapResult = device->functions.vkMapMemory(device->device, chunk->memory, 0, chunk->allocator.size_in_bytes, 0, &chunk->mapped);
                 wgvk_assert(mapResult == VK_SUCCESS, "Mapping memory failed: %s", vkErrorString(mapResult));
             }
-            *data = (void*)(((uint8_t*)chunk->mapped) + allocation->offset);
+            *data = (void*)(((uint8_t*)chunk->mapped) + allocation->offset + offset);
         }break;
         #if USE_VMA_ALLOCATOR == 1
         case AllocationTypeVMA: {
@@ -1636,7 +1637,7 @@ void wgpuQueueWriteBuffer(WGPUQueue cSelf, WGPUBuffer buffer, uint64_t bufferOff
         stDesc.size = size;
         stDesc.usage = WGPUBufferUsage_MapWrite;
         WGPUBuffer stagingBuffer = wgpuDeviceCreateBuffer(cSelf->device, &stDesc);
-        wgpuQueueWriteBuffer(cSelf, stagingBuffer, 0, data, size);
+        wgpuQueueWriteBuffer(cSelf, stagingBuffer, bufferOffset, data, size);
         wgpuCommandEncoderCopyBufferToBuffer(cSelf->presubmitCache, stagingBuffer, 0, buffer, bufferOffset, size);
         wgpuBufferRelease(stagingBuffer);
     }
@@ -2462,6 +2463,7 @@ void wgpuRenderBundleEncoderSetBindGroup(WGPURenderBundleEncoder renderBundleEnc
 }
 
 void wgpuRenderBundleEncoderSetIndexBuffer(WGPURenderBundleEncoder renderBundleEncoder, WGPUBuffer buffer, WGPUIndexFormat format, uint64_t offset, uint64_t size) WGPU_FUNCTION_ATTRIBUTE{
+    
     RenderPassCommandGeneric cmd = {
         .type = rp_command_type_set_index_buffer,
         .setIndexBuffer = {
@@ -2654,16 +2656,16 @@ WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, 
     };
 
     
-    for(uint32_t i = 0;i < rpdesc->colorAttachmentCount;i++){
-        wgvk_assert(rpdesc->colorAttachments[i].view, "colorAttachments[%d].view is null", (int)i);
-        ce_trackTextureView(enc, rpdesc->colorAttachments[i].view, iur_color);
-    }
-
-    for(uint32_t i = 0;i < rpdesc->colorAttachmentCount;i++){
-        if(rpdesc->colorAttachments[i].resolveTarget){
-            ce_trackTextureView(enc, rpdesc->colorAttachments[i].resolveTarget, iur_resolve);
-        }
-    }
+    //for(uint32_t i = 0;i < rpdesc->colorAttachmentCount;i++){
+    //    wgvk_assert(rpdesc->colorAttachments[i].view, "colorAttachments[%d].view is null", (int)i);
+    //    ce_trackTextureView(enc, rpdesc->colorAttachments[i].view, iur_color);
+    //}
+//
+    //for(uint32_t i = 0;i < rpdesc->colorAttachmentCount;i++){
+    //    if(rpdesc->colorAttachments[i].resolveTarget){
+    //        ce_trackTextureView(enc, rpdesc->colorAttachments[i].resolveTarget, iur_resolve);
+    //    }
+    //}
 
     if(rpdesc->depthStencilAttachment){
         wgvk_assert(rpdesc->depthStencilAttachment->view, "depthStencilAttachment.view is null");
@@ -2889,6 +2891,18 @@ void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder){
     if(beginInfo->timestampWritesPresent){
         wgpuQuerySetRelease(beginInfo->timestampWrites.querySet);
     }
+
+    //for(uint32_t i = 0;i < beginInfo->colorAttachmentCount;i++){
+    //    wgvk_assert(beginInfo->colorAttachments[i].view, "colorAttachments[%d].view is null", (int)i);
+    //    ce_trackTextureView(destination, rpdesc->colorAttachments[i].view, iur_color);
+    //}
+//
+    //for(uint32_t i = 0;i < rpdesc->colorAttachmentCount;i++){
+    //    if(rpdesc->colorAttachments[i].resolveTarget){
+    //        ce_trackTextureView(enc, rpdesc->colorAttachments[i].resolveTarget, iur_resolve);
+    //    }
+    //}
+
     #if VULKAN_USE_DYNAMIC_RENDERING == 1
     device->functions.vkCmdEndRendering(destination);
     #else
@@ -3449,7 +3463,9 @@ void releaseCommandBuffersDependingOnFence(void* userdata){
     }
     WGPUCommandBufferVector_free(bufferVector);
 }
-
+void wgpuQueueWaitIdle(WGPUQueue queue){
+    queue->device->functions.vkQueueWaitIdle(queue->graphicsQueue);
+}
 DEFINE_VECTOR_WITH_INLINE_STORAGE(static inline, CmdBarrierSet, CmdBarrierSetILVector, 4);
 const int use_single_submit = 1;
 void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuffer* buffers){
@@ -4542,7 +4558,7 @@ void wgpuTextureRelease(WGPUTexture texture){
         for(size_t i = 0;i < texture->viewCache.current_capacity;i++){
             if(viewCacheTable[i].key.format != VK_FORMAT_UNDEFINED){
                 device->functions.vkDestroyImageView(device->device, viewCacheTable[i].value->view, NULL);
-                RL_FREE(viewCacheTable->value);
+                RL_FREE(viewCacheTable[i].value);
             }
         }
         Texture_ViewCache_free(&texture->viewCache);
@@ -5179,7 +5195,7 @@ void wgpuDeviceTick(WGPUDevice device){
 WGPUSampler wgpuDeviceCreateSampler(WGPUDevice device, const WGPUSamplerDescriptor* descriptor){
     WGPUSampler ret = RL_CALLOC(1, sizeof(WGPUSamplerImpl));
     ret->refCount = 1;
-    
+    ret->device = device;
     const VkSamplerCreateInfo sci = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .pNext = NULL,
@@ -5287,7 +5303,7 @@ void wgpuRenderPassEncoderSetScissorRect         (WGPURenderPassEncoder renderPa
 void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder rpe, WGPUBuffer buffer, WGPUIndexFormat format, uint64_t offset, uint64_t size) {
     wgvk_assert(rpe != NULL, "RenderPassEncoderHandle is null");
     wgvk_assert(buffer != NULL, "BufferHandle is null");
-
+    
     RenderPassCommandGeneric insert = {
         .type = rp_command_type_set_index_buffer,
         .setIndexBuffer = {
@@ -6627,7 +6643,7 @@ static VkResult wgvkDeviceMemoryPool_create_chunk(WgvkDeviceMemoryPool* pool, si
 
     VkMemoryAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext = &flagsInfo,
+        //.pNext = &flagsInfo,
         .allocationSize = size,
         .memoryTypeIndex = pool->memoryTypeIndex,
     };
@@ -7365,23 +7381,24 @@ WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContai
     ret->level = descriptor->level;
     ret->device = device;
     wgpuDeviceAddRef(device);
-
-    ret->primitiveCounts = RL_CALLOC(descriptor->geometryCount, sizeof(uint32_t));
+    uint32_t geometryCount = (descriptor->level == WGPURayTracingAccelerationContainerLevel_Bottom) ? descriptor->geometryCount : descriptor->instanceCount;
+    ret->geometryCount = geometryCount;
+    ret->primitiveCounts = RL_CALLOC(geometryCount, sizeof(uint32_t));
     uint32_t* maxPrimitiveCounts = ret->primitiveCounts;
 
     VkAabbPositionsKHR dummy = {0};
     // Use a dynamic array (or VLA if your compiler supports it)
-    VkAccelerationStructureGeometryKHR* geometries = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureGeometryKHR));
+    VkAccelerationStructureGeometryKHR* geometries = RL_CALLOC(geometryCount + descriptor->instanceCount, sizeof(VkAccelerationStructureGeometryKHR));
 
     
 
     if (descriptor->level == WGPURayTracingAccelerationContainerLevel_Bottom) {
-        for (uint32_t i = 0; i < descriptor->geometryCount; i++) {
+        for (uint32_t i = 0; i < geometryCount; i++) {
             geometries[i].sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
             geometries[i].flags = VK_GEOMETRY_OPAQUE_BIT_KHR; // Or dynamic based on descriptor
             
-            ret->inputGeometryBuffers = RL_CALLOC(descriptor->geometryCount, sizeof(WGPUBuffer));
-            ret->buildRangeInfos = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureBuildRangeInfoKHR));
+            ret->inputGeometryBuffers = RL_CALLOC(geometryCount, sizeof(WGPUBuffer));
+            ret->buildRangeInfos = RL_CALLOC(geometryCount, sizeof(VkAccelerationStructureBuildRangeInfoKHR));
             switch (descriptor->geometries[i].type) {
                 case WGPURayTracingAccelerationGeometryType_Triangles: {
                     
@@ -7471,8 +7488,7 @@ WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContai
             geometries[i].geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
             geometries[i].geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
             geometries[i].geometry.instances.data.deviceAddress = vulkanFormattedBuffer->address;
-
-            
+            geometries[i].geometry.instances.arrayOfPointers = VK_FALSE;
         }
     }
     ret->geometries = geometries;
@@ -7484,8 +7500,9 @@ WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContai
     VkAccelerationStructureBuildGeometryInfoKHR geometryInfoVulkan = {
         .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
         .pGeometries = geometries,
-        .geometryCount = (descriptor->level == WGPURayTracingAccelerationContainerLevel_Bottom) ? descriptor->geometryCount : descriptor->instanceCount,
-        .type = descriptor->level == WGPURayTracingAccelerationContainerLevel_Bottom ? VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR : VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR
+        .geometryCount = geometryCount,
+        .type = descriptor->level == WGPURayTracingAccelerationContainerLevel_Bottom ? VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR : VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+        .dstAccelerationStructure = ret->accelerationStructure
     };
 
     device->functions.vkGetAccelerationStructureBuildSizesKHR(
@@ -7542,6 +7559,7 @@ void wgpuCommandEncoderBuildRayTracingAccelerationContainer(WGPUCommandEncoder e
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
             .dstAccelerationStructure = container->accelerationStructure,
             .type = toVulkanAccelerationStructureLevel(container->level),
+            .geometryCount = container->geometryCount,
             .pGeometries = container->geometries,
             .scratchData = container->buildScratchBuffer->address
         };

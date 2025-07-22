@@ -67,4 +67,10 @@ int main(){
     };
     
     WGPURayTracingAccelerationContainer tlas = wgpuDeviceCreateRayTracingAccelerationContainer(base.device, &tlasDesc);
+    {
+        WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(base.device, NULL);
+        wgpuCommandEncoderBuildRayTracingAccelerationContainer(enc, tlas);
+        WGPUCommandBuffer cbuf = wgpuCommandEncoderFinish(enc, NULL);
+        wgpuQueueSubmit(base.queue, 1, &cbuf);
+    }
 }

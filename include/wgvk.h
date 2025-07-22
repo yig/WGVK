@@ -1792,6 +1792,7 @@ WGPUCommandEncoder wgpuDeviceCreateCommandEncoder    (WGPUDevice device, const W
 WGPUCommandBuffer wgpuCommandEncoderFinish           (WGPUCommandEncoder commandEncoder, WGPU_NULLABLE WGPUCommandBufferDescriptor const * descriptor);
 void wgpuDeviceTick                                  (WGPUDevice device);
 void wgpuQueueSubmit                                 (WGPUQueue queue, size_t commandCount, const WGPUCommandBuffer* buffers);
+void wgpuQueueWaitIdle                               (WGPUQueue queue);
 void wgpuCommandEncoderCopyBufferToBuffer            (WGPUCommandEncoder commandEncoder, WGPUBuffer source, uint64_t sourceOffset, WGPUBuffer destination, uint64_t destinationOffset, uint64_t size);
 void wgpuCommandEncoderCopyBufferToTexture           (WGPUCommandEncoder commandEncoder, const WGPUTexelCopyBufferInfo*  source, const WGPUTexelCopyTextureInfo* destination, const WGPUExtent3D* copySize);
 void wgpuCommandEncoderCopyTextureToBuffer           (WGPUCommandEncoder commandEncoder, const WGPUTexelCopyTextureInfo* source, const WGPUTexelCopyBufferInfo* destination, const WGPUExtent3D* copySize);
