@@ -25,6 +25,7 @@
  */
 
 
+#include "vulkan/vulkan_core.h"
 #define VOLK_IMPLEMENTATION
 #ifndef zeroinit
 #define zeroinit = {0}
@@ -7359,39 +7360,86 @@ WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContai
 
     VkAccelerationStructureBuildGeometryInfoKHR geometryInfoVulkan = {
         .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+        .pGeometries = NULL,
     };// = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureBuildGeometryInfoKHR));
-
-    VkAccelerationStructureGeometryKHR* geometries = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureGeometryKHR));
-
+    uint32_t primitiveCount = 0;
+    
     VkAccelerationStructureBuildRangeInfoKHR brinfo;
     
     VkAabbPositionsKHR dummy;
-    for(uint32_t i = 0;i < descriptor->geometryCount;i++){
-        geometries[i].sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-        switch(descriptor->geometries[i].type){
+    // Use a dynamic array (or VLA if your compiler supports it)
+    VkAccelerationStructureGeometryKHR* geometries = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureGeometryKHR));
+    VkAccelerationStructureBuildRangeInfoKHR* buildRangeInfos = RL_CALLOC(descriptor->geometryCount, sizeof(VkAccelerationStructureBuildRangeInfoKHR));
 
-            case WGPURayTracingAccelerationGeometryType_AABBs:{
-                geometries[i].geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
-                geometries[i].geometry.aabbs.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR;
-                geometries[i].geometry.aabbs.data.deviceAddress = descriptor->geometries[i].aabb.buffer->address;
-                geometries[i].geometry.aabbs.stride = descriptor->geometries[i].aabb.stride;
-            }break;
-            case WGPURayTracingAccelerationGeometryType_Triangles:{
-                geometries[i].geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-                geometries[i].geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-                geometries[i].geometry.triangles.vertexData.deviceAddress = descriptor->geometries[i].vertex.buffer->address;
-                geometries[i].geometry.triangles.vertexFormat = toVulkanVertexFormat(descriptor->geometries[i].vertex.format);
-            }break;
-            default:
+    for (uint32_t i = 0; i < descriptor->geometryCount; i++) {
+        geometries[i].sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        geometries[i].flags = VK_GEOMETRY_OPAQUE_BIT_KHR; // Or dynamic based on descriptor
+
+        if (descriptor->level == WGPURayTracingAccelerationContainerLevel_Bottom) {
+             switch (descriptor->geometries[i].type) {
+                case WGPURayTracingAccelerationGeometryType_Triangles: {
+                    geometries[i].geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+                    geometries[i].geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+                    geometries[i].geometry.triangles.vertexFormat = toVulkanVertexFormat(descriptor->geometries[i].vertex.format);
+                    geometries[i].geometry.triangles.vertexData.deviceAddress = descriptor->geometries[i].vertex.buffer->address;
+                    geometries[i].geometry.triangles.vertexStride = descriptor->geometries[i].vertex.stride;
+                    geometries[i].geometry.triangles.maxVertex = descriptor->geometries[i].vertex.count;
+                    
+                    if (descriptor->geometries[i].index.buffer) {
+                        geometries[i].geometry.triangles.indexType = toVulkanIndexFormat(descriptor->geometries[i].index.format);
+                        geometries[i].geometry.triangles.indexData.deviceAddress = descriptor->geometries[i].index.buffer->address;
+                        primitiveCount = descriptor->geometries[i].index.count / 3;
+                    } else {
+                        geometries[i].geometry.triangles.indexType = VK_INDEX_TYPE_NONE_KHR;
+                        primitiveCount = descriptor->geometries[i].vertex.count / 3;
+                    }
+
+                    buildRangeInfos[i].primitiveCount = primitiveCount;
+                    buildRangeInfos[i].primitiveOffset = 0;
+                    buildRangeInfos[i].firstVertex = 0;
+                    buildRangeInfos[i].transformOffset = 0;
+                    break;
+                }
+                case WGPURayTracingAccelerationGeometryType_AABBs: {
+                    geometries[i].geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
+                    geometries[i].geometry.aabbs.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR;
+                    geometries[i].geometry.aabbs.data.deviceAddress = descriptor->geometries[i].aabb.buffer->address;
+                    geometries[i].geometry.aabbs.stride = descriptor->geometries[i].aabb.stride;
+                    
+                    primitiveCount = descriptor->geometries[i].aabb.count;
+                    buildRangeInfos[i].primitiveCount = primitiveCount;
+                    buildRangeInfos[i].primitiveOffset = 0;
+                    buildRangeInfos[i].firstVertex = 0;
+                    buildRangeInfos[i].transformOffset = 0;
+                    break;
+                }
+            }
         }
     }
+
+    VkAccelerationStructureBuildSizesInfoKHR buildSizesInfo = {
+        VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
+    };
+    
+    device->functions.vkGetAccelerationStructureBuildSizesKHR(
+        device->device,
+        VK_ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_OR_DEVICE_KHR,
+        &geometryInfoVulkan,
+        NULL,
+        &buildSizesInfo
+    );
+
+    VkAccelerationStructureCreateInfoKHR accelStructureCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+        .type = (descriptor->level == WGPURayTracingAccelerationContainerLevel_Top) ? VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR : VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+        .size = buildSizesInfo.accelerationStructureSize
+    };
 
     VkAccelerationStructureBuildRangeInfoKHR** buildRangeInfos;
     geometryInfoVulkan.dstAccelerationStructure = ret->accelerationStructure;
     geometryInfoVulkan.geometryCount = descriptor->geometryCount;
-    geometryInfoVulkan.pGeometries[0];
+    //geometryInfoVulkan.pGeometries[0];
     
-
     device->functions.vkBuildAccelerationStructuresKHR(
         device->device,
         VK_NULL_HANDLE,
@@ -7399,6 +7447,7 @@ WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContai
         &geometryInfoVulkan,
         (const VkAccelerationStructureBuildRangeInfoKHR**)buildRangeInfos
     );
+    
 }
 // WGPU Raytracing End =======================
 
