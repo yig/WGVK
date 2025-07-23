@@ -109,7 +109,9 @@ if(WGVK_BUILD_WGSL_SUPPORT)
     target_include_directories(tint_c_api PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
     target_include_directories(tint_c_api PRIVATE "${dawn_SOURCE_DIR}")
     target_compile_features(tint_c_api PRIVATE cxx_std_20)
-    
+    if(NOT MSVC)
+      target_compile_options(tint_c_api PRIVATE "-fno-rtti")
+    endif()
     target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_WGSL=1)
     
     # Bundle wgvk_core and its dependencies into the final `wgvk` library.

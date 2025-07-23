@@ -193,6 +193,7 @@ void wgvk_job_destroy(wgvk_job_t* job);
 #endif
 
 #define PHM_EMPTY_SLOT_KEY NULL
+#define PHM_DELETED_SLOT_KEY ((void*)0xFFFFFFFFFFFFFFFF)
 
 #define DEFINE_PTR_HASH_MAP(SCOPE, Name, ValueType)                                                                              \
                                                                                                                                  \
@@ -422,6 +423,176 @@ void wgvk_job_destroy(wgvk_job_t* job);
         }                                                                                                                        \
         /* If source had no table, dest remains in its _init state (table=NULL, capacity=0) */                                   \
     }
+
+
+
+
+
+
+
+
+
+
+#define DEFINE_PTR_HASH_MAP_ERASABLE(SCOPE, Name, ValueType)                                                                     \
+                                                                                                                                 \
+    typedef struct Name##_kv_pair {                                                                                              \
+        void *key;                                                                                                               \
+        ValueType value;                                                                                                         \
+    } Name##_kv_pair;                                                                                                            \
+                                                                                                                                 \
+    typedef struct Name {                                                                                                        \
+        uint64_t current_size;                                                                                                   \
+        uint64_t tombstone_count;    /* Number of deleted (tombstone) entries */                                                 \
+        uint64_t current_capacity;                                                                                               \
+        bool has_null_key;                                                                                                       \
+        ValueType null_value;                                                                                                    \
+        Name##_kv_pair* table;                                                                                                   \
+    } Name;                                                                                                                      \
+                                                                                                                                 \
+    static inline uint64_t Name##_hash_key(void *key) {                                                                          \
+        assert(key != NULL && key != PHM_EMPTY_SLOT_KEY && key != PHM_DELETED_SLOT_KEY);                                         \
+        return ((uintptr_t)key) * PHM_HASH_MULTIPLIER;                                                                           \
+    }                                                                                                                            \
+                                                                                                                                 \
+    static inline uint64_t Name##_round_up_to_power_of_2(uint64_t v) {                                                           \
+        if (v == 0) return 0;                                                                                                    \
+        v--;                                                                                                                     \
+        v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16; v |= v >> 32;                                            \
+        v++;                                                                                                                     \
+        return v;                                                                                                                \
+    }                                                                                                                            \
+                                                                                                                                 \
+    static void Name##_insert_entry(Name##_kv_pair *table, uint64_t capacity, void *key, ValueType value) {                      \
+        assert(key != NULL && key != PHM_EMPTY_SLOT_KEY && key != PHM_DELETED_SLOT_KEY && capacity > 0 && (capacity & (capacity - 1)) == 0); \
+        uint64_t cap_mask = capacity - 1;                                                                                        \
+        uint64_t index = Name##_hash_key(key) & cap_mask;                                                                        \
+        while (table[index].key != PHM_EMPTY_SLOT_KEY && table[index].key != PHM_DELETED_SLOT_KEY) {                             \
+            index = (index + 1) & cap_mask;                                                                                      \
+        }                                                                                                                        \
+        table[index].key = key;                                                                                                  \
+        table[index].value = value;                                                                                              \
+    }                                                                                                                            \
+                                                                                                                                 \
+    static Name##_kv_pair *Name##_find_slot(Name *map, void *key) {                                                              \
+        assert(key != NULL && key != PHM_EMPTY_SLOT_KEY && key != PHM_DELETED_SLOT_KEY && map->table != NULL && map->current_capacity > 0); \
+        uint64_t cap_mask = map->current_capacity - 1;                                                                           \
+        uint64_t index = Name##_hash_key(key) & cap_mask;                                                                        \
+        Name##_kv_pair *tombstone = NULL;                                                                                        \
+        while (map->table[index].key != PHM_EMPTY_SLOT_KEY) {                                                                    \
+            if (map->table[index].key == key) return &map->table[index];                                                         \
+            if (map->table[index].key == PHM_DELETED_SLOT_KEY && tombstone == NULL) tombstone = &map->table[index];               \
+            index = (index + 1) & cap_mask;                                                                                      \
+        }                                                                                                                        \
+        return tombstone ? tombstone : &map->table[index];                                                                       \
+    }                                                                                                                            \
+                                                                                                                                 \
+    static void Name##_grow(Name *map);                                                                                          \
+                                                                                                                                 \
+    SCOPE void Name##_init(Name *map) {                                                                                          \
+        map->current_size = 0;                                                                                                   \
+        map->tombstone_count = 0;                                                                                                \
+        map->current_capacity = 0;                                                                                               \
+        map->has_null_key = false;                                                                                               \
+        map->table = NULL;                                                                                                       \
+    }                                                                                                                            \
+                                                                                                                                 \
+    static void Name##_grow(Name *map) {                                                                                         \
+        uint64_t old_capacity = map->current_capacity;                                                                           \
+        Name##_kv_pair *old_table = map->table;                                                                                  \
+        uint64_t new_capacity = (old_capacity == 0) ? ((PHM_INITIAL_HEAP_CAPACITY > 0) ? PHM_INITIAL_HEAP_CAPACITY : 8) : old_capacity * 2; \
+        new_capacity = Name##_round_up_to_power_of_2(new_capacity);                                                              \
+        if (new_capacity <= old_capacity) return;                                                                                \
+        Name##_kv_pair *new_table = (Name##_kv_pair *)calloc(new_capacity, sizeof(Name##_kv_pair));                              \
+        if (!new_table) return;                                                                                                  \
+        if (old_table && map->current_size > 0) {                                                                                \
+            for (uint64_t i = 0; i < old_capacity; ++i) {                                                                        \
+                if (old_table[i].key != PHM_EMPTY_SLOT_KEY && old_table[i].key != PHM_DELETED_SLOT_KEY) {                        \
+                    Name##_insert_entry(new_table, new_capacity, old_table[i].key, old_table[i].value);                          \
+                }                                                                                                                \
+            }                                                                                                                    \
+        }                                                                                                                        \
+        if (old_table) free(old_table);                                                                                          \
+        map->table = new_table;                                                                                                  \
+        map->current_capacity = new_capacity;                                                                                    \
+        map->tombstone_count = 0;                                                                                                \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE int Name##_put(Name *map, void *key, ValueType value) {                                                                \
+        if (key == NULL) {                                                                                                       \
+            map->null_value = value;                                                                                             \
+            if (!map->has_null_key) { map->has_null_key = true; return 1; }                                                      \
+            return 0;                                                                                                            \
+        }                                                                                                                        \
+        assert(key != PHM_EMPTY_SLOT_KEY && key != PHM_DELETED_SLOT_KEY);                                                        \
+        if ((map->current_size + map->tombstone_count + 1) * PHM_LOAD_FACTOR_DEN >= map->current_capacity * PHM_LOAD_FACTOR_NUM) {\
+            Name##_grow(map);                                                                                                    \
+        }                                                                                                                        \
+        if (map->current_capacity == 0) return 0;                                                                                \
+        Name##_kv_pair *slot = Name##_find_slot(map, key);                                                                       \
+        if (slot->key == PHM_EMPTY_SLOT_KEY || slot->key == PHM_DELETED_SLOT_KEY) {                                               \
+            if (slot->key == PHM_DELETED_SLOT_KEY) map->tombstone_count--;                                                        \
+            slot->key = key;                                                                                                     \
+            slot->value = value;                                                                                                 \
+            map->current_size++;                                                                                                 \
+            return 1;                                                                                                            \
+        } else {                                                                                                                 \
+            slot->value = value;                                                                                                 \
+            return 0;                                                                                                            \
+        }                                                                                                                        \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE ValueType *Name##_get(Name *map, void *key) {                                                                          \
+        if (key == NULL) return map->has_null_key ? &map->null_value : NULL;                                                     \
+        assert(key != PHM_EMPTY_SLOT_KEY && key != PHM_DELETED_SLOT_KEY);                                                        \
+        if (map->current_capacity == 0) return NULL;                                                                             \
+        uint64_t cap_mask = map->current_capacity - 1;                                                                           \
+        uint64_t index = Name##_hash_key(key) & cap_mask;                                                                        \
+        while (map->table[index].key != PHM_EMPTY_SLOT_KEY) {                                                                    \
+            if (map->table[index].key == key) return &map->table[index].value;                                                   \
+            index = (index + 1) & cap_mask;                                                                                      \
+        }                                                                                                                        \
+        return NULL;                                                                                                             \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE bool Name##_erase(Name *map, void *key) {                                                                              \
+        if (key == NULL) {                                                                                                       \
+            if (map->has_null_key) { map->has_null_key = false; return true; }                                                   \
+            return false;                                                                                                        \
+        }                                                                                                                        \
+        assert(key != PHM_EMPTY_SLOT_KEY && key != PHM_DELETED_SLOT_KEY);                                                        \
+        if (map->current_capacity == 0) return false;                                                                            \
+        uint64_t cap_mask = map->current_capacity - 1;                                                                           \
+        uint64_t index = Name##_hash_key(key) & cap_mask;                                                                        \
+        while (map->table[index].key != PHM_EMPTY_SLOT_KEY) {                                                                    \
+            if (map->table[index].key == key) {                                                                                  \
+                map->table[index].key = PHM_DELETED_SLOT_KEY;                                                                    \
+                /* Optional: Zero out value for non-primitive types */                                                           \
+                /* map->table[index].value = (ValueType){0}; */                                                                  \
+                map->current_size--;                                                                                             \
+                map->tombstone_count++;                                                                                          \
+                return true;                                                                                                     \
+            }                                                                                                                    \
+            index = (index + 1) & cap_mask;                                                                                      \
+        }                                                                                                                        \
+        return false;                                                                                                            \
+    }                                                                                                                            \
+                                                                                                                                 \
+    SCOPE void Name##_free(Name *map) {                                                                                          \
+        if (map->table != NULL) free(map->table);                                                                                \
+        Name##_init(map);                                                                                                        \
+    }
+
+
+
+
+
+
+
+
+
+
+
+
 
 #define DEFINE_PTR_HASH_SET(SCOPE, Name, Type)                                                                                   \
                                                                                                                                  \
@@ -1394,7 +1565,7 @@ typedef struct DescriptorSetAndPool{
 DEFINE_VECTOR(static inline, VkAttachmentDescription, VkAttachmentDescriptionVector)
 DEFINE_VECTOR(static inline, WGPUBuffer, WGPUBufferVector)
 DEFINE_VECTOR(static inline, DescriptorSetAndPool, DescriptorSetAndPoolVector)
-DEFINE_PTR_HASH_MAP(static inline, BindGroupCacheMap, DescriptorSetAndPoolVector)
+DEFINE_PTR_HASH_MAP_ERASABLE(static inline, BindGroupCacheMap, DescriptorSetAndPoolVector)
 
 
 //DEFINE_PTR_HASH_MAP(static inline, BindGroupUsageMap, uint32_t)

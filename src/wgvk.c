@@ -1986,7 +1986,7 @@ void wgpuWriteBindGroup(WGPUDevice device, WGPUBindGroup wvBindGroup, const WGPU
         }
     }
 
-    vkUpdateDescriptorSets(device->device, writes.size, writes.data, 0, NULL);
+    device->functions.vkUpdateDescriptorSets(device->device, writes.size, writes.data, 0, NULL);
 
     VkWriteDescriptorSetVector_free(&writes);
     VkDescriptorBufferInfoVector_free(&bufferInfos);
@@ -2098,7 +2098,11 @@ WGPUBindGroupLayout wgpuDeviceCreateBindGroupLayout(WGPUDevice device, const WGP
 
     slci.pBindings = bindings.data;
     slci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    device->functions.vkCreateDescriptorSetLayout(device->device, &slci, NULL, &ret->layout);
+    VkResult createResult = device->functions.vkCreateDescriptorSetLayout(device->device, &slci, NULL, &ret->layout);
+    if(createResult != VK_SUCCESS){
+        RL_FREE(ret);
+        return NULL;
+    }
     WGPUBindGroupLayoutEntry* entriesCopy = (WGPUBindGroupLayoutEntry*)RL_CALLOC(entryCount, sizeof(WGPUBindGroupLayoutEntry));
 
     if(entryCount > 0){
@@ -2200,7 +2204,7 @@ WGPUPipelineLayout wgpuDeviceCreatePipelineLayout(WGPUDevice device, const WGPUP
     lci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     lci.pSetLayouts = dslayouts;
     lci.setLayoutCount = ret->bindGroupLayoutCount;
-    VkResult res = vkCreatePipelineLayout(device->device, &lci, NULL, &ret->layout);
+    VkResult res = device->functions.vkCreatePipelineLayout(device->device, &lci, NULL, &ret->layout);
     if(res != VK_SUCCESS){
         wgpuPipelineLayoutRelease(ret);
         ret = NULL;
@@ -4542,7 +4546,17 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
 void wgpuBindGroupLayoutRelease(WGPUBindGroupLayout bglayout){
     --bglayout->refCount;
     if(bglayout->refCount == 0){
-        bglayout->device->functions.vkDestroyDescriptorSetLayout(bglayout->device->device, bglayout->layout, NULL);
+        WGPUDevice device = bglayout->device;
+        for(uint32_t i = 0;i < framesInFlight;i++){
+            DescriptorSetAndPoolVector* dspVector = BindGroupCacheMap_get(&bglayout->device->frameCaches[i].bindGroupCache, bglayout);
+            if(dspVector){
+                for(size_t i = 0;i < dspVector->size;i++){
+                    device->functions.vkDestroyDescriptorPool(device->device, dspVector->data[i].pool, NULL);
+                }
+                BindGroupCacheMap_erase(&bglayout->device->frameCaches[i].bindGroupCache, bglayout);
+            }
+        }
+        device->functions.vkDestroyDescriptorSetLayout(bglayout->device->device, bglayout->layout, NULL);
         RL_FREE((void*)bglayout->entries);
         RL_FREE((void*)bglayout);
     }
