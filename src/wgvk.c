@@ -6657,7 +6657,9 @@ static VkResult wgvkDeviceMemoryPool_create_chunk(WgvkDeviceMemoryPool* pool, si
 
     VkMemoryAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        //.pNext = &flagsInfo,
+        #if VULKAN_ENABLE_RAYTRACING == 1
+        .pNext = &flagsInfo,
+        #endif
         .allocationSize = size,
         .memoryTypeIndex = pool->memoryTypeIndex,
     };
@@ -7532,11 +7534,12 @@ WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContai
         .size = buildSizesInfo.accelerationStructureSize,
         .usage = WGPUBufferUsage_Raytracing
     });
-
-    ret->updateScratchBuffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
-        .size = buildSizesInfo.updateScratchSize,
-        .usage = WGPUBufferUsage_Raytracing
-    });
+    if(buildSizesInfo.updateScratchSize){
+        ret->updateScratchBuffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
+            .size = buildSizesInfo.updateScratchSize,
+            .usage = WGPUBufferUsage_Raytracing
+        });
+    }
 
     ret->buildScratchBuffer = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
         .size = buildSizesInfo.buildScratchSize,
