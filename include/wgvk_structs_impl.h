@@ -2139,11 +2139,17 @@ typedef struct WGPUTextureImpl{
     uint32_t sampleCount;
     Texture_ViewCache viewCache;
 }WGPUTextureImpl;
+
+typedef struct WGPUShaderModuleSingleEntryPoint{
+    char epName[16];
+    VkShaderModule module;
+}WGPUShaderModuleSingleEntryPoint;
+
 typedef struct WGPUShaderModuleImpl{
     refcount_type refCount;
     WGPUDevice device;
-    VkShaderModule vulkanModule;
-    
+    VkShaderModule vulkanModuleMultiEP;
+    WGPUShaderModuleSingleEntryPoint modules[16];
     WGPUChainedStruct* source;
 }WGPUShaderModuleImpl;
 
@@ -2844,6 +2850,70 @@ static inline VkBufferUsageFlags toVulkanBufferUsage(WGPUBufferUsage busg) {
     }
     return usage;
 }
+
+static inline size_t wgpuStrlen(WGPUStringView ws) {
+    if (ws.length == WGPU_STRLEN) {
+        size_t i = 0;
+        while (ws.data[i] != '\0') {
+            i++;
+        }
+        return i;
+    } else {
+        return ws.length;
+    }
+}
+
+static inline int wgpuStrcmp(WGPUStringView ws, WGPUStringView ws2) {
+    size_t len1 = wgpuStrlen(ws);
+    size_t len2 = wgpuStrlen(ws2);
+    size_t min_len = (len1 < len2) ? len1 : len2;
+    for (size_t i = 0; i < min_len; ++i) {
+        if (ws.data[i] != ws2.data[i]) {
+            return (unsigned char)ws.data[i] - (unsigned char)ws2.data[i];
+        }
+    }
+    if (len1 != len2) {
+        return (len1 > len2) ? 1 : -1;
+    }
+    return 0;
+}
+
+static inline int wgpuStrcmpc(WGPUStringView ws, const char* data) {
+    size_t len1 = wgpuStrlen(ws);
+    size_t len2 = 0;
+    while(data[len2] != '\0'){
+        len2++;
+    }
+    size_t min_len = (len1 < len2) ? len1 : len2;
+    for (size_t i = 0; i < min_len; ++i) {
+        if (ws.data[i] != data[i]) {
+            return (unsigned char)ws.data[i] - (unsigned char)data[i];
+        }
+    }
+    if (len1 != len2) {
+        return (len1 > len2) ? 1 : -1;
+    }
+    return 0;
+}
+
+static inline int wgpuStrcmpcn(WGPUStringView ws, const char* data, size_t maxlength) {
+    size_t len1 = wgpuStrlen(ws);
+    size_t len2 = 0;
+    while(len2 < maxlength && data[len2] != '\0'){
+        len2++;
+    }
+    size_t min_len = (len1 < len2) ? len1 : len2;
+    for (size_t i = 0; i < min_len; ++i) {
+        if (ws.data[i] != data[i]) {
+            return (unsigned char)ws.data[i] - (unsigned char)data[i];
+        }
+    }
+    if (len1 != len2) {
+        return (len1 > len2) ? 1 : -1;
+    }
+    return 0;
+}
+
 
 static inline VkColorComponentFlags toVulkanColorWriteMask(WGPUColorWriteMask mask){
     VkColorComponentFlags ret = 0;

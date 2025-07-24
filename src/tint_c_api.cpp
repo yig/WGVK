@@ -1,14 +1,19 @@
-#include "src/tint/lang/core/ir/transform/substitute_overrides.h"
-#include "src/tint/lang/wgsl/ast/identifier_expression.h"
-#include "src/tint/lang/wgsl/ast/templated_identifier.h"
-#include "src/tint/lang/wgsl/ast/var.h"
 #include <iostream>
-
+#include <src/tint/lang/core/ir/transform/substitute_overrides.h>
+#include <src/tint/lang/wgsl/ast/identifier_expression.h>
+#include <src/tint/lang/wgsl/ast/templated_identifier.h>
+#include <src/tint/lang/wgsl/ast/variable_decl_statement.h>
+#include <src/tint/lang/wgsl/ast/variable.h>
+#include <src/tint/lang/wgsl/ast/var.h>
 #include <src/tint/lang/wgsl/ast/identifier.h>
+#include <src/tint/lang/wgsl/ast/override.h>
+#include <src/tint/lang/wgsl/ast/float_literal_expression.h>
+#include <src/tint/lang/wgsl/ast/int_literal_expression.h>
 #include <src/tint/lang/wgsl/ast/module.h>
 #include <src/tint/lang/wgsl/program/program.h>
 #include <src/tint/lang/wgsl/reader/reader.h>
 #include <src/tint/lang/wgsl/sem/function.h>
+#include <src/tint/lang/core/ir/transform/single_entry_point.h>
 #include <src/tint/lang/wgsl/inspector/inspector.h>
 #include <src/tint/lang/spirv/writer/writer.h>
 #include <tint_c_api.h>
@@ -262,11 +267,29 @@ RGAPI WGPUReflectionInfo reflectionInfo_wgsl_sync(WGPUStringView wgslSource) {
     }
     return ret;
 }
+WGPUShaderStageEnum toWGPUShaderStage(tint::inspector::PipelineStage stage){
+    switch(stage){
+        case tint::inspector::PipelineStage::kVertex:{
+            return WGPUShaderStageEnum_Vertex;
+        }
+        case tint::inspector::PipelineStage::kCompute:{
+            return WGPUShaderStageEnum_Compute;
+        }
+        case tint::inspector::PipelineStage::kFragment:{
+            return WGPUShaderStageEnum_Fragment;
+        }
+        default:{
+            rg_unreachable();
+            abort();
+        }
+    }
+}
 RGAPI void reflectionInfo_wgsl_free(WGPUReflectionInfo *reflectionInfo) {
     RL_FREE((void*)reflectionInfo->globals);
     RL_FREE((void*)reflectionInfo->inputAttributes);
     RL_FREE((void*)reflectionInfo->outputAttributes);
 }
+
 RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL *source) {
 
     size_t length = (source->code.length == WGPU_STRLEN) ? std::strlen(source->code.data) : source->code.length;
@@ -274,36 +297,84 @@ RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL *source) {
 
     tint::wgsl::reader::Options options{};
     tint::Program prog = tint::wgsl::reader::Parse(&file, options);
-    tint::Result<tint::core::ir::Module> maybeModule = tint::wgsl::reader::ProgramToLoweredIR(prog);
-    
-    if(maybeModule == tint::Success){
-        
-        
-        //tint::core::ir::transform::SubstituteOverridesConfig cfg;
-        //auto& inputProgram = prog;
-        //cfg.map = std::move();
-        //auto substituteOverridesResult =
-        //tint::core::ir::transform::SubstituteOverrides(ir.Get(), cfg);
-        //DAWN_INVALID_IF(substituteOverridesResult != tint::Success,
-        //                        "Pipeline override substitution (IR) failed:\n%s",
-        //                        substituteOverridesResult.Failure().reason);
-        tint::core::ir::Module module(std::move(maybeModule.Get()));
-        tint::spirv::writer::Options options{};
+    tint::inspector::Inspector inspector(prog);
+    const std::vector<tint::inspector::EntryPoint>& entryPoints = inspector.GetEntryPoints();
+    tc_SpirvBlob ret{};
+    for(size_t i = 0;i < entryPoints.size();i++){
+        const tint::inspector::EntryPoint& entryPoint = entryPoints[i];
+        tint::Result<tint::core::ir::Module> maybeModule = tint::wgsl::reader::ProgramToLoweredIR(prog);
+        if(maybeModule == tint::Success){
+            tint::core::ir::Module& module = maybeModule.Get();
+            auto singleEntryPointResult = tint::core::ir::transform::SingleEntryPoint(module, entryPoints[i].name);
+            
+            if(singleEntryPointResult == tint::Success){    
+                tint::core::ir::transform::SubstituteOverridesConfig cfg{};
 
-        tint::Result<tint::spirv::writer::Output> spirvMaybe = tint::spirv::writer::Generate(module, options);
-        if(spirvMaybe == tint::Success){
-            tint::spirv::writer::Output output(spirvMaybe.Get());
-            tc_SpirvBlob ret{(output.spirv.size() * sizeof(uint32_t)), (uint32_t *)RL_CALLOC(output.spirv.size(), sizeof(uint32_t))};
-            std::copy(output.spirv.begin(), output.spirv.end(), ret.code);
-            return ret;
+                const tint::Vector<const tint::ast::Node*, 64>& gd = prog.AST().GlobalDeclarations();
+                std::unordered_map<std::string, double> override_name_to_value;
+
+                for(auto& d : gd){
+                    if(auto ord = d->As<tint::ast::Override>()){
+                        if(auto fl = ord->initializer->As<tint::ast::FloatLiteralExpression>()){
+                            override_name_to_value[ord->name->symbol.Name()] = fl->value;
+                        }
+                        if(auto il = ord->initializer->As<tint::ast::IntLiteralExpression>()){
+                            override_name_to_value[ord->name->symbol.Name()] = il->value;
+                        }
+                        
+                    }
+                }
+
+                for(auto& ovr : entryPoint.overrides){
+                    //auto it = override_name_to_value.find(ovr.name);
+                    //if(it == override_name_to_value.end()){
+                    //    cfg.map.insert({ovr.id, 0.0});
+                    //}
+                    //else{
+                    //    cfg.map.insert({ovr.id, it->second});
+                    //}
+                    cfg.map.insert({ovr.id, 1.0});
+                }
+                auto substituteOverridesResult = tint::core::ir::transform::SubstituteOverrides(module, cfg);
+                
+                tint::spirv::writer::Options options{};
+
+                tint::Result<tint::spirv::writer::Output> spirvMaybe = tint::spirv::writer::Generate(module, options);
+                if(spirvMaybe == tint::Success){
+                    tint::spirv::writer::Output output(spirvMaybe.Get());
+                    uint32_t wgSIndex = (uint32_t)toWGPUShaderStage(entryPoint.stage);
+                    
+                    ret.entryPoints[wgSIndex] = tc_spirvSingleEntrypoint{
+                        .codeSize = (output.spirv.size() * sizeof(uint32_t)),
+                        .code = (uint32_t *)RL_CALLOC(output.spirv.size(), sizeof(uint32_t))
+                    };
+
+                    if(entryPoint.name.size() <= 16){
+                        memcpy(ret.entryPoints[wgSIndex].entryPointName, entryPoint.name.c_str(), entryPoint.name.size());
+                    }
+
+                    else{
+                        abort();
+                    }
+
+                    std::copy(output.spirv.begin(), output.spirv.end(), ret.entryPoints[wgSIndex].code);
+                    
+                }
+                else{
+                    abort();
+                }
+            }
+            else{
+                abort();
+            }
+
         }
         else{
-            abort();
+            std::cerr << "Compilation failed: " << maybeModule.Failure().reason << "\n";
+            tc_SpirvBlob ret = {0};
+            return ret;
         }
     }
-    else{
-        std::cerr << "Compilation failed: " << maybeModule.Failure().reason << "\n";
-        tc_SpirvBlob ret = {0};
-        return ret;
-    }
+    return ret;
+    
 }

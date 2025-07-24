@@ -181,7 +181,7 @@ int main(){
         .hwnd = glfwGetWin32Window(window),
         .hinstance = GetModuleHandle(NULL)
     };
-    WGPUChainedStruct* surfaceChain = &surfaceChainObj;
+    WGPUChainedStruct* surfaceChain = &surfaceChainObj.chain;
     #else
     WGPUSurfaceSourceXlibWindow surfaceChainX11;
     Display* x11_display = glfwGetX11Display();

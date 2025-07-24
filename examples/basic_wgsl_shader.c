@@ -9,11 +9,12 @@
 
 // The WGSL shader source remains the same.
 const char wgslSource[] = R"(
-const red = 0.5f;
+override brightness = 0.0;
 struct VertexInput {
     @location(0) position: vec2f,
     @location(1) uv: vec2f
 };
+
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f
@@ -26,12 +27,13 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.uv = in.uv;
     return out;
 }
+
 @group(0) @binding(0) var colDiffuse: texture_2d<f32>;
 @group(0) @binding(1) var grsampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return textureSample(colDiffuse, grsampler, in.uv);
+    return textureSample(colDiffuse, grsampler, in.uv) * brightness;
 }
 )";
 
@@ -209,12 +211,20 @@ int main() {
         .format = WGPUTextureFormat_BGRA8Unorm,
         .writeMask = WGPUColorWriteMask_All,
     };
+    WGPUConstantEntry brightnessConstant = {
+        .nextInChain = NULL,
+        .key = STRVIEW("brightness"),
+        .value = 1.0
+    };
+
     WGPUFragmentState fragmentState = {
         .entryPoint = {
             .data = "fs_main",
             .length = sizeof("fs_main") - 1
         },
         .module = shaderModule,
+        .constantCount = 1,
+        .constants = &brightnessConstant,
         .targetCount = 1,
         .targets = &colorTargetState,
     };
@@ -258,7 +268,10 @@ int main() {
             .frontFace = WGPUFrontFace_CCW
         },
         .layout = pllayout,
-        .multisample = { .count = 1, .mask = 0xffffffff },
+        .multisample = {
+            .count = 1,
+            .mask = 0xffffffff
+        },
     };
     ctx->pipeline = wgpuDeviceCreateRenderPipeline(device, &rpdesc);
 

@@ -219,14 +219,14 @@ typedef enum WGPUPresentMode{
 }WGPUPresentMode;
 
 typedef enum WGPUTextureAspect {
-    WGPUTextureAspect_Undefined = 0x00000000,
-    WGPUTextureAspect_All = 0x00000001,
+    WGPUTextureAspect_Undefined   = 0x00000000,
+    WGPUTextureAspect_All         = 0x00000001,
     WGPUTextureAspect_StencilOnly = 0x00000002,
-    WGPUTextureAspect_DepthOnly = 0x00000003,
-    WGPUTextureAspect_Plane0Only = 0x00050000,
-    WGPUTextureAspect_Plane1Only = 0x00050001,
-    WGPUTextureAspect_Plane2Only = 0x00050002,
-    WGPUTextureAspect_Force32 = 0x7FFFFFFF
+    WGPUTextureAspect_DepthOnly   = 0x00000003,
+    WGPUTextureAspect_Plane0Only  = 0x00050000,
+    WGPUTextureAspect_Plane1Only  = 0x00050001,
+    WGPUTextureAspect_Plane2Only  = 0x00050002,
+    WGPUTextureAspect_Force32     = 0x7FFFFFFF
 } WGPUTextureAspect;
 
 typedef enum WGPUPrimitiveTopology {

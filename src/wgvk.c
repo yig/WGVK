@@ -1228,7 +1228,6 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     retDevice->refCount = 1;
     WGPUQueue retQueue = RL_CALLOC(1, sizeof(WGPUQueueImpl));
     retQueue->refCount = 0;
-    __builtin_dump_struct(&createInfo, printf);
     VkResult dcresult = vkCreateDevice(adapter->physicalDevice, &createInfo, NULL, &(retDevice->device));
     struct VolkDeviceTable table = {0};
 
@@ -2138,7 +2137,7 @@ WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShade
                 source->codeSize,
                 source->code
             };
-            device->functions.vkCreateShaderModule(device->device, &sCreateInfo, NULL, &ret->vulkanModule);
+            device->functions.vkCreateShaderModule(device->device, &sCreateInfo, NULL, &ret->vulkanModuleMultiEP);
             ret->source = RL_CALLOC(1, sizeof(WGPUShaderSourceSPIRV));
             WGPUShaderSourceSPIRV* copySource = (WGPUShaderSourceSPIRV*)ret->source;
             copySource->chain.sType = WGPUSType_ShaderSourceSPIRV;
@@ -2155,15 +2154,22 @@ WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShade
             size_t length = (source->code.length == WGPU_STRLEN) ? strlen(source->code.data) : source->code.length;
             
             tc_SpirvBlob blob = wgslToSpirv(source);
-            VkShaderModuleCreateInfo sCreateInfo = {
-                VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                NULL,
-                0,
-                blob.codeSize,
-                blob.code
-            };
 
-            device->functions.vkCreateShaderModule(device->device, &sCreateInfo, NULL, &ret->vulkanModule);
+            for(uint32_t i = 0;i < 16;i++){
+                if(blob.entryPoints[i].codeSize){
+                    VkShaderModuleCreateInfo sCreateInfo = {
+                        VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                        NULL,
+                        0,
+                        blob.entryPoints[i].codeSize,
+                        blob.entryPoints[i].code
+                    };
+                    device->functions.vkCreateShaderModule(device->device, &sCreateInfo, NULL, &ret->modules[i].module);
+                    memcpy(ret->modules[i].epName, blob.entryPoints[i].entryPointName, 16);
+                    RL_FREE(blob.entryPoints[i].code);
+                }
+            }
+
             WGPUShaderSourceWGSL* depot = RL_CALLOC(1, sizeof(WGPUShaderSourceWGSL));
             depot->chain.sType = WGPUSType_ShaderSourceWGSL;
             depot->code = CLITERAL(WGPUStringView){
@@ -2172,7 +2178,7 @@ WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShade
             };
 
             memcpy((void*)depot->code.data, source->code.data, length);
-            RL_FREE(blob.code);
+            
             ret->source = (WGPUChainedStruct*)depot;
             return ret;
         }
@@ -3997,7 +4003,7 @@ void wgpuRenderPassEncoderRelease(WGPURenderPassEncoder rpenc) {
 void wgpuShaderModuleRelease(WGPUShaderModule module){
     if(--module->refCount == 0){
         
-        module->device->functions.vkDestroyShaderModule(module->device->device, module->vulkanModule, NULL);
+        module->device->functions.vkDestroyShaderModule(module->device->device, module->vulkanModuleMultiEP, NULL);
         
         if(module->source->sType == WGPUSType_ShaderSourceSPIRV){
             RL_FREE((void*)((WGPUShaderSourceSPIRV*)module->source)->code);
@@ -4159,7 +4165,7 @@ void wgpuDeviceRelease(WGPUDevice device){
                     VkCommandBufferVector_free(&cache->commandBuffers);
                 }
                 for(size_t bgc = 0;bgc < cache->bindGroupCache.current_capacity;bgc++){
-                    if(cache->bindGroupCache.table[bgc].key != PHM_EMPTY_SLOT_KEY){
+                    if(cache->bindGroupCache.table[bgc].key != PHM_EMPTY_SLOT_KEY && cache->bindGroupCache.table[bgc].key != PHM_DELETED_SLOT_KEY){
                         DescriptorSetAndPoolVector* dspv = &cache->bindGroupCache.table[bgc].value;
                         for(size_t vi = 0;vi < dspv->size;vi++){
                             //device->functions.vkFreeDescriptorSets(device->device, dspv->data[i].pool, 1, &dspv->data[i].set); 
@@ -4211,7 +4217,7 @@ WGPUComputePipeline wgpuDeviceCreateComputePipeline(WGPUDevice device, WGPUCompu
         NULL,
         0,
         VK_SHADER_STAGE_COMPUTE_BIT,
-        descriptor->compute.module->vulkanModule,
+        descriptor->compute.module->vulkanModuleMultiEP,
         namebuffer,
         NULL
     };
@@ -4247,23 +4253,35 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
     VkPipelineShaderStageCreateInfo vertShaderStageInfo zeroinit;
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = (descriptor->vertex.module)->vulkanModule;
     vertShaderStageInfo.pName = descriptor->vertex.entryPoint.data; // Assuming null-terminated or careful length handling elsewhere
+    if((descriptor->vertex.module)->vulkanModuleMultiEP){
+        vertShaderStageInfo.module = (descriptor->vertex.module)->vulkanModuleMultiEP;
+    }
+    else{
+        vertShaderStageInfo.module = (descriptor->vertex.module)->modules[WGPUShaderStageEnum_Vertex].module;
+        // TODO (also below): handle all this stuff but this is mainly if a wrong entryPoint name is entered? idk
+        // for(uint32_t i = 0;i < WGPUShaderStageEnum_EnumCount;i++){
+        //     wgvk_assert(wgpuStrlen(descriptor->vertex.entryPoint) < 16, "Entry point name too long");
+        //     size_t clength = wgpuStrlen(descriptor->vertex.entryPoint);
+        //     
+        // }
+    }
     
-    
-    VkSpecializationInfo specInfo = {0};
+    VkSpecializationInfo vertexSpecInfo = {0};
     double vertexConstantBuffer[32];
     VkSpecializationMapEntry vertexMapEntries[32];
     if(descriptor->vertex.constantCount){
-        specInfo.pData = vertexConstantBuffer;
+        vertexSpecInfo.pData = vertexConstantBuffer;
         for(uint32_t i = 0;i < descriptor->vertex.constantCount;i++){
             vertexConstantBuffer[i] = descriptor->vertex.constants[i].value;
             vertexMapEntries[i].constantID = i;
             vertexMapEntries[i].offset = i * sizeof(double);
+            vertexMapEntries[i].size = 8;
         }
-        specInfo.dataSize = descriptor->vertex.constantCount * sizeof(double);
-        specInfo.mapEntryCount = descriptor->vertex.constantCount;
-        vertShaderStageInfo.pSpecializationInfo = &specInfo;
+        vertexSpecInfo.dataSize = descriptor->vertex.constantCount * sizeof(double);
+        vertexSpecInfo.mapEntryCount = descriptor->vertex.constantCount;
+        vertexSpecInfo.pMapEntries = vertexMapEntries;
+        vertShaderStageInfo.pSpecializationInfo = &vertexSpecInfo;
     }
     // TODO: Handle constants if necessary via specialization constants
     // vertShaderStageInfo.pSpecializationInfo = ...;
@@ -4271,13 +4289,35 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
 
     // Fragment Stage (Optional)
     VkPipelineShaderStageCreateInfo fragShaderStageInfo zeroinit;
+
+    VkSpecializationInfo fragmentSpecInfo = {0};
+    double fragmentConstantBuffer[32] ;
+    VkSpecializationMapEntry fragmentMapEntries[32];
     if (descriptor->fragment) {
         fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragShaderStageInfo.module = (descriptor->fragment->module)->vulkanModule;
+
         fragShaderStageInfo.pName = descriptor->fragment->entryPoint.data;
-        // TODO: Handle constants
-        // fragShaderStageInfo.pSpecializationInfo = ...;
+        if((descriptor->fragment->module)->vulkanModuleMultiEP){
+            fragShaderStageInfo.module = (descriptor->fragment->module)->vulkanModuleMultiEP;
+        }
+        else{
+            // TODO: see above for the vertex case, same applies here
+            fragShaderStageInfo.module = (descriptor->fragment->module)->modules[WGPUShaderStageEnum_Fragment].module;
+        }
+        if(descriptor->fragment->constantCount){
+            fragmentSpecInfo.pData = fragmentConstantBuffer;
+            for(uint32_t i = 0;i < descriptor->fragment->constantCount;i++){
+                fragmentConstantBuffer[i] = descriptor->fragment->constants[i].value;
+                fragmentMapEntries[i].constantID = i;
+                fragmentMapEntries[i].offset = i * sizeof(double);
+                fragmentMapEntries[i].size = sizeof(i);
+            }
+            fragmentSpecInfo.dataSize = descriptor->fragment->constantCount * sizeof(double);
+            fragmentSpecInfo.mapEntryCount = descriptor->fragment->constantCount;
+            fragmentSpecInfo.pMapEntries = fragmentMapEntries;
+            fragShaderStageInfo.pSpecializationInfo = &fragmentSpecInfo;
+        }
         shaderStages[shaderStageInsertPos++] = fragShaderStageInfo;
     }
 
@@ -4716,7 +4756,6 @@ void wgpuCommandEncoderCopyTextureToBuffer (WGPUCommandEncoder commandEncoder, c
             .depth = copySize->depthOrArrayLayers
         }
     };
-    //__builtin_dump_struct(&region, printf);
     commandEncoder->device->functions.vkCmdCopyImageToBuffer(
         commandEncoder->buffer,
         source->texture->image,
@@ -5552,16 +5591,16 @@ static OptionalBarrier ru_trackBufferAndEmit(ResourceUsage* resourceUsage, WGPUB
             0,
             VK_WHOLE_SIZE
         };
-
-        rec->lastAccess = usage.access;
-        rec->lastStage = usage.stage;
-        rec->everWrittenTo |= isWritingAccess(usage.access);
         const OptionalBarrier ret = {
             .type = bt_buffer_barrier,
             .bufferBarrier = bufferBarrier,
             .srcStage = rec->lastStage,
             .dstStage = usage.stage,
         };
+        rec->lastAccess = usage.access;
+        rec->lastStage = usage.stage;
+        rec->everWrittenTo |= isWritingAccess(usage.access);
+        
         return ret;
     }
     else{
@@ -5600,7 +5639,6 @@ static void encoderOptionalBarrierVk(VkCommandBuffer buffer, PFN_vkCmdPipelineBa
 
         default: return;
     }
-
     barrier_fn(
         buffer,
         barrier.srcStage,
