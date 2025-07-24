@@ -16,7 +16,7 @@ typedef struct tc_SpirvBlob{
     tc_spirvSingleEntrypoint entryPoints[16];
 }tc_SpirvBlob;
 
-RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL* source);
+RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL* source, uint32_t constantCount, const WGPUConstantEntry* constants);
 RGAPI void reflectionInfo_wgsl_free(WGPUReflectionInfo* reflectionInfo);
 
 #endif

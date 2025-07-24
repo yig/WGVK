@@ -2153,7 +2153,7 @@ WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShade
             const WGPUShaderSourceWGSL* source = (WGPUShaderSourceWGSL*)descriptor->nextInChain;
             size_t length = (source->code.length == WGPU_STRLEN) ? strlen(source->code.data) : source->code.length;
             
-            tc_SpirvBlob blob = wgslToSpirv(source);
+            tc_SpirvBlob blob = wgslToSpirv(source, 0, NULL);
 
             for(uint32_t i = 0;i < 16;i++){
                 if(blob.entryPoints[i].codeSize){

@@ -290,7 +290,7 @@ RGAPI void reflectionInfo_wgsl_free(WGPUReflectionInfo *reflectionInfo) {
     RL_FREE((void*)reflectionInfo->outputAttributes);
 }
 
-RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL *source) {
+RGAPI tc_SpirvBlob wgslToSpirv(const WGPUShaderSourceWGSL *source, uint32_t constantCount, const WGPUConstantEntry* constants) {
 
     size_t length = (source->code.length == WGPU_STRLEN) ? std::strlen(source->code.data) : source->code.length;
     tint::Source::File file("<not a file>", std::string_view(source->code.data, source->code.data + length));
