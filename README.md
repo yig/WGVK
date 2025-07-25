@@ -11,8 +11,13 @@
 </a>
 
 
-A minimal, standalone, single-file implementation of the WebGPU API in C99, built on top of Vulkan 1.1. WGVK is designed for easy integration into C/C++ projects, providing a modern graphics and compute API without the steep learning curve of raw Vulkan.
 
+A standalone, single-file, fully feature-conformant implementation WebGPU API in C99, built on top of Vulkan 1.1. WGVK is designed for easy integration into C/C++ projects, providing a modern graphics and compute API without the steep learning curve of raw Vulkan.
+## Implementation progress
+
+- ▓▓▓▓▓▓▓▓▓▓ 100% WebGPU Conformity
+- ▓▓▓▓▓▓▓▓░░ 80% WGSL Reflection
+- ▓▓▓▓░░░░░░ 40% HW Raytracing according to [Dawn-RT](https://github.com/maierfelix/dawn-ray-tracing/blob/master/RT_SPEC.md#GPURayTracingAccelerationInstanceDescriptor)
 ## Features
 
 *   **Full** WebGPU API: A modern interface for graphics and compute pipelines.
