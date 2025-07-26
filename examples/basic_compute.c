@@ -263,7 +263,7 @@ int main(){
     });
 
     WGPUCommandEncoder cenc = wgpuDeviceCreateCommandEncoder(device, NULL);
-    WGPUComputePassEncoder cpenc = wgpuCommandEncoderBeginComputePass(cenc);
+    WGPUComputePassEncoder cpenc = wgpuCommandEncoderBeginComputePass(cenc, NULL);
     wgpuComputePassEncoderSetPipeline(cpenc, cpl);
     wgpuComputePassEncoderSetBindGroup(cpenc, 0, group, 0, NULL);
     wgpuComputePassEncoderDispatchWorkgroups(cpenc, 16, 1, 1);
