@@ -12,6 +12,7 @@ INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
 #ifndef STRVIEW
 #define STRVIEW(X) (WGPUStringView){X, sizeof(X) - 1}
 #endif
+
 #ifdef __EMSCRIPTEN__
 #  define GLFW_EXPOSE_NATIVE_EMSCRIPTEN
 #  ifndef GLFW_PLATFORM_EMSCRIPTEN // not defined in older versions of emscripten
@@ -40,7 +41,6 @@ INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
 #ifndef __EMSCRIPTEN__
 #  include <GLFW/glfw3native.h>
 #endif
-
 #include <stdint.h>
 
 /* ---------- POSIX / Unix-like ---------- */

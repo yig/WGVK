@@ -294,7 +294,8 @@ typedef enum WGPUCompareFunction {
     WGPUCompareFunction_Greater = 0x00000005,
     WGPUCompareFunction_NotEqual = 0x00000006,
     WGPUCompareFunction_GreaterEqual = 0x00000007,
-    WGPUCompareFunction_Always = 0x00000008
+    WGPUCompareFunction_Always = 0x00000008,
+    WGPUCompareFunction_Force32 = 0x7fffffff,
 } WGPUCompareFunction;
 
 typedef WGPUFlags WGPUMapMode;
@@ -1827,7 +1828,7 @@ void wgpuSurfaceGetCurrentTexture             (WGPUSurface surface, WGPUSurfaceT
 void wgpuSurfacePresent                       (WGPUSurface surface);
 
 WGPURaytracingPassEncoder wgpuCommandEncoderBeginRaytracingPass(WGPUCommandEncoder enc);
-WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder enc);
+WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder enc, const WGPUComputePassDescriptor* cpdesc);
 void wgpuComputePassEncoderEnd(WGPUComputePassEncoder commandEncoder);
 void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder);
 WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, const WGPURenderPassDescriptor* rpdesc);

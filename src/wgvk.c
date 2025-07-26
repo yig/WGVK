@@ -1047,7 +1047,8 @@ void wgpuCreateAdapter_impl(void* userdata_v){
 WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, const WGPURequestAdapterOptions* options, WGPURequestAdapterCallbackInfo callbackInfo){
     userdataforcreateadapter* info = (userdataforcreateadapter*)RL_CALLOC(1, sizeof(userdataforcreateadapter));
     info->instance = instance;
-    info->options = *options;
+    if(options)
+        info->options = *options;
     info->info = callbackInfo;
     WGPUFutureImpl ret = {
         .userdataForFunction = info,
@@ -4971,7 +4972,7 @@ void wgpuComputePassEncoderSetBindGroup(WGPUComputePassEncoder cpe, uint32_t gro
     ComputePassEncoder_PushCommand(cpe, &insert);
 }
 
-WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder commandEncoder){
+WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder commandEncoder, const WGPUComputePassDescriptor* cpdesc){
     WGPUComputePassEncoder ret = RL_CALLOC(1, sizeof(WGPUComputePassEncoderImpl));
     ++commandEncoder->encodedCommandCount;
     ret->refCount = 2;

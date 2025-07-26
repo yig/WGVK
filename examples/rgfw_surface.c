@@ -1,15 +1,40 @@
-#include <wgvk.h>
-#include <wgvk.h>
+
+#include <webgpu/webgpu.h>
 #include <external/incbin.h>
 #include <stdio.h>
 
 #define RGFW_WEBGPU
+#ifndef EMSCRIPTEN
+#define RGFW_X11
+#else
+#include <emscripten/emscripten.h>
+#endif
 #define RGFW_IMPLEMENTATION
+
 #include <external/RGFW.h>
 
-//INCBIN(simple_shader, "../resources/simple_shader.wgsl");
-INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
-
+const char simpleShaderWGSL[] = 
+"struct VertexInput {\n"
+"    @location(0) position: vec2f\n"
+"};\n"
+"struct VertexOutput {\n"
+"    @builtin(position) position: vec4f\n"
+"};\n"
+""
+"@vertex\n"
+"fn vs_main(in: VertexInput) -> VertexOutput {\n"
+"    var out: VertexOutput;\n"
+"    out.position = vec4f(in.position.x, in.position.y, 0.0f, 1.0f);\n"
+"    return out;\n"
+"}\n"
+"\n"
+"@fragment\n"
+"fn fs_main(in: VertexOutput) -> @location(0) vec4f {\n"
+"    return vec4f(1,0,0,1);\n"
+"}\n";
+#ifndef EMSCRIPTEN
+    INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
+#endif
 #ifndef STRVIEW
     #define STRVIEW(X) (WGPUStringView){X, sizeof(X) - 1}
 #endif
@@ -69,9 +94,85 @@ void deviceCallbackFunction(
     ){
     *((WGPUDevice*)userdata1) = device;
 }
+typedef struct LoopContext{
+    RGFW_window* window;
+    WGPUSurface surface;
+    WGPUDevice device;
+    WGPUQueue queue;
+    WGPUBuffer vertexBuffer;
+    WGPURenderPipeline rp;
+} LoopContext;
+void mainloop(void* userdata){
+    LoopContext* context = (LoopContext*)userdata;
+
+    //RGFW_event event;
+    //while (RGFW_window_checkEvent(context->window, &event)) {
+    //    if (event.type == RGFW_quit) break;
+    //    if (event.type == RGFW_mouseButtonPressed && event.button == RGFW_mouseLeft) {
+    //        printf("You clicked at x: %d, y: %d\n", event.point.x, event.point.y);
+    //    }
+    //}
+    WGPUSurfaceTexture surfaceTexture = {};
+
+    wgpuSurfaceGetCurrentTexture(context->surface, &surfaceTexture);
+    if(surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal){
+        wgpuSurfaceConfigure(context->surface, &(const WGPUSurfaceConfiguration){
+            .alphaMode = WGPUCompositeAlphaMode_Opaque,
+            .presentMode = WGPUPresentMode_Fifo,
+            .device = context->device,
+            .format = WGPUTextureFormat_BGRA8Unorm,
+            .width = 1000,
+            .height = 1000
+        });
+        wgpuSurfaceGetCurrentTexture(context->surface, &surfaceTexture);
+    }
+    WGPUTextureView surfaceView = wgpuTextureCreateView(surfaceTexture.texture, &(const WGPUTextureViewDescriptor){
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .format = WGPUTextureFormat_BGRA8Unorm,
+        .dimension = WGPUTextureViewDimension_2D,
+        .usage = WGPUTextureUsage_RenderAttachment,
+        .aspect = WGPUTextureAspect_All,
+    });
+    WGPUCommandEncoder cenc = wgpuDeviceCreateCommandEncoder(context->device, NULL);
+    WGPURenderPassColorAttachment colorAttachment = {
+        .clearValue = (WGPUColor){0.5,0.2,0,0.5},
+        .loadOp = WGPULoadOp_Clear,
+        .storeOp = WGPUStoreOp_Store,
+        .view = surfaceView
+    };
+    WGPURenderPassEncoder rpenc = wgpuCommandEncoderBeginRenderPass(cenc, &(const WGPURenderPassDescriptor){
+        .colorAttachmentCount = 1,
+        .colorAttachments = &colorAttachment,
+    });
+    //wgpuRenderPassEncoderSetScissorRect(rpenc, 0, 0, (frameCount / 8) % 1000, height);
+    wgpuRenderPassEncoderSetPipeline(rpenc, context->rp);
+    wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, context->vertexBuffer, 0, WGPU_WHOLE_SIZE);
+    wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
+    //wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
+    wgpuRenderPassEncoderEnd(rpenc);
+    WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(cenc, NULL);
+    wgpuQueueSubmit(context->queue, 1, &cBuffer);
+    wgpuCommandEncoderRelease(cenc);
+    wgpuCommandBufferRelease(cBuffer);
+    wgpuRenderPassEncoderRelease(rpenc);
+    wgpuTextureViewRelease(surfaceView);
+    #ifndef EMSCRIPTEN
+    wgpuSurfacePresent(context->surface);
+    #endif
+    //++frameCount;
+    //uint64_t nextStamp = nanoTime();
+    //if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
+    //    stamp = nextStamp;
+    //    printf("FPS: %llu\n", (unsigned long long)frameCount);
+    //    frameCount = 0;
+    //}
+}
 
 int main(){
-
+    #ifndef EMSCRIPTEN
     WGPUInstanceLayerSelection lsel = {
         .chain = {
             .next = NULL,
@@ -81,25 +182,30 @@ int main(){
     const char* layernames[] = {"VK_LAYER_KHRONOS_validation"};
     lsel.instanceLayers = layernames;
     lsel.instanceLayerCount = 1;
-
+    #endif
     WGPUInstanceDescriptor instanceDescriptor = {
         .nextInChain =
-        #ifdef NDEBUG
+        #if defined(NDEBUG) || defined(EMSCRIPTEN)
         NULL,
         #else
         &lsel.chain,
         #endif
-        .capabilities = {0}
+        .capabilities = {
+            .timedWaitAnyEnable = 1
+        }
     };
 
     WGPUInstance instance = wgpuCreateInstance(&instanceDescriptor);
 
     WGPURequestAdapterOptions adapterOptions = {0};
     adapterOptions.featureLevel = WGPUFeatureLevel_Core;
-    WGPURequestAdapterCallbackInfo adapterCallback = {0};
-    adapterCallback.callback = adapterCallbackFunction;
-    WGPUAdapter requestedAdapter;
-    adapterCallback.userdata1 = (void*)&requestedAdapter;
+    WGPUAdapter requestedAdapter = NULL;
+
+    WGPURequestAdapterCallbackInfo adapterCallback = {
+        .mode = WGPUCallbackMode_WaitAnyOnly,
+        .callback = adapterCallbackFunction,
+        .userdata1 = (void*)&requestedAdapter
+    };
 
 
     WGPUFuture aFuture = wgpuInstanceRequestAdapter(instance, &adapterOptions, adapterCallback);
@@ -110,7 +216,7 @@ int main(){
 
     wgpuInstanceWaitAny(instance, 1, &winfo, ~0ull);
     WGPUStringView deviceLabel = {"WGPU Device", sizeof("WGPU Device") - 1};
-
+    
     WGPUDeviceDescriptor deviceDescriptor = {
         .nextInChain = 0,
         .label = deviceLabel,
@@ -142,40 +248,37 @@ int main(){
 
     int width, height;
     WGPUSurfaceCapabilities caps = {0};
-    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Mailbox;
-
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
 
+    WGPUPresentMode desiredPresentMode = WGPUPresentMode_Fifo;
     wgpuSurfaceConfigure(surface, &(const WGPUSurfaceConfiguration){
         .alphaMode = WGPUCompositeAlphaMode_Opaque,
         .presentMode = desiredPresentMode,
+        .usage = WGPUTextureUsage_RenderAttachment,
         .device = device,
         .format = WGPUTextureFormat_BGRA8Unorm,
         .width = width,
         .height = height
     });
 
-
-    //WGPUShaderSourceWGSL shaderSourceWgsl = {
-    //    .chain = {
-    //        .sType = WGPUSType_ShaderSourceWGSL
-    //    },
-    //    .code = {
-    //        .data = (const char*)gsimple_shaderData,
-    //        .length = gsimple_shaderSize
-    //    }
-    //};
-
-    WGPUShaderSourceSPIRV shaderSourceSpirv = {
+    #ifdef EMSCRIPTEN
+    WGPUShaderSourceWGSL shaderSource = {
+        .chain = {
+            .sType = WGPUSType_ShaderSourceWGSL
+        },
+        .code = {simpleShaderWGSL, sizeof(simpleShaderWGSL) - 1}
+    };
+    #else
+    WGPUShaderSourceSPIRV shaderSource = {
         .chain = {
             .sType = WGPUSType_ShaderSourceSPIRV
         },
         .code = (uint32_t*)gsimple_shaderSpirvData,
         .codeSize = gsimple_shaderSpirvSize,
     };
-
+    #endif
     WGPUShaderModuleDescriptor shaderModuleDesc = {
-        .nextInChain = &shaderSourceSpirv.chain
+        .nextInChain = &shaderSource.chain
     };
     WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
     WGPUVertexAttribute vbAttribute = {
@@ -255,80 +358,29 @@ int main(){
         .depthStencilFormat = WGPUTextureFormat_Undefined,
         .sampleCount = 1
     };
-    WGPURenderBundleEncoder rbEnc = wgpuDeviceCreateRenderBundleEncoder(device, &rbEncDesc);
-    wgpuRenderBundleEncoderSetPipeline(rbEnc, rp);
-    wgpuRenderBundleEncoderSetVertexBuffer(rbEnc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
-    wgpuRenderBundleEncoderDraw(rbEnc, 3, 1, 0, 0);
-    WGPURenderBundle renderBundle = wgpuRenderBundleEncoderFinish(rbEnc, NULL);
-    WGPUSurfaceTexture surfaceTexture;
-
+    //WGPURenderBundleEncoder rbEnc = wgpuDeviceCreateRenderBundleEncoder(device, &rbEncDesc);
+    //wgpuRenderBundleEncoderSetPipeline(rbEnc, rp);
+    //wgpuRenderBundleEncoderSetVertexBuffer(rbEnc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
+    //wgpuRenderBundleEncoderDraw(rbEnc, 3, 1, 0, 0);
+    //WGPURenderBundle renderBundle = wgpuRenderBundleEncoderFinish(rbEnc, NULL);
+    printf("Surface: %p\n", surface);
     uint64_t stamp = nanoTime();
     uint64_t frameCount = 0;
+    LoopContext* ctx = calloc(1, sizeof(LoopContext));
+    ctx->window = window;
+    ctx->surface = surface;
+    ctx->device = device;
+    ctx->queue = queue;
+    ctx->vertexBuffer = vertexBuffer;
+    ctx->rp = rp;
+    #ifndef EMSCRIPTEN
     while(!RGFW_window_shouldClose(window)){
-        RGFW_event event;
-        while (RGFW_window_checkEvent(window, &event)) {
-            if (event.type == RGFW_quit) break;
-
-            if (event.type == RGFW_mouseButtonPressed && event.button == RGFW_mouseLeft) {
-                printf("You clicked at x: %d, y: %d\n", event.point.x, event.point.y);
-            }
-        }
-        wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
-        if(surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal){
-
-            wgpuSurfaceConfigure(surface, &(const WGPUSurfaceConfiguration){
-                .alphaMode = WGPUCompositeAlphaMode_Opaque,
-                .presentMode = desiredPresentMode,
-                .device = device,
-                .format = WGPUTextureFormat_BGRA8Unorm,
-                .width = width,
-                .height = height
-            });
-            wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
-        }
-        WGPUTextureView surfaceView = wgpuTextureCreateView(surfaceTexture.texture, &(const WGPUTextureViewDescriptor){
-            .baseArrayLayer = 0,
-            .arrayLayerCount = 1,
-            .baseMipLevel = 0,
-            .mipLevelCount = 1,
-            .format = WGPUTextureFormat_BGRA8Unorm,
-            .dimension = WGPUTextureViewDimension_2D,
-            .usage = WGPUTextureUsage_RenderAttachment,
-            .aspect = WGPUTextureAspect_All,
-        });
-        WGPUCommandEncoder cenc = wgpuDeviceCreateCommandEncoder(device, NULL);
-        WGPURenderPassColorAttachment colorAttachment = {
-            .clearValue = (WGPUColor){0.5,0.2,0,0.5},
-            .loadOp = WGPULoadOp_Clear,
-            .storeOp = WGPUStoreOp_Store,
-            .view = surfaceView
-        };
-
-        WGPURenderPassEncoder rpenc = wgpuCommandEncoderBeginRenderPass(cenc, &(const WGPURenderPassDescriptor){
-            .colorAttachmentCount = 1,
-            .colorAttachments = &colorAttachment,
-        });
-        //wgpuRenderPassEncoderSetScissorRect(rpenc, 0, 0, (frameCount / 8) % 1000, height);
-        wgpuRenderPassEncoderSetPipeline(rpenc, rp);
-        wgpuRenderPassEncoderSetVertexBuffer(rpenc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
-        //wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
-        wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
-        wgpuRenderPassEncoderEnd(rpenc);
-
-        WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(cenc, NULL);
-        wgpuQueueSubmit(queue, 1, &cBuffer);
-        wgpuCommandEncoderRelease(cenc);
-        wgpuCommandBufferRelease(cBuffer);
-        wgpuRenderPassEncoderRelease(rpenc);
-        wgpuTextureViewRelease(surfaceView);
-        wgpuSurfacePresent(surface);
-        ++frameCount;
-        uint64_t nextStamp = nanoTime();
-        if(nextStamp - stamp > ((uint64_t)1000000000ULL)){
-            stamp = nextStamp;
-            printf("FPS: %llu\n", (unsigned long long)frameCount);
-            frameCount = 0;
-        }
+        mainloop((void*)ctx);
     }
-    wgpuSurfaceRelease(surface);
+    #else
+    
+    emscripten_set_main_loop_arg(mainloop, 0, 0, ctx);
+    //for(;;){}
+    #endif
+    //wgpuSurfaceRelease(surface);
 }
