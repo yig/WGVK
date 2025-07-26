@@ -1,10 +1,12 @@
-#define RGFW_IMPLEMENTATION
-#define RGFW_USE_XDL
-#include <external/RGFW.h>
 #include <wgvk.h>
 #include <wgvk.h>
 #include <external/incbin.h>
 #include <stdio.h>
+
+#define RGFW_WEBGPU
+#define RGFW_IMPLEMENTATION
+#include <external/RGFW.h>
+
 //INCBIN(simple_shader, "../resources/simple_shader.wgsl");
 INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
 
@@ -48,7 +50,7 @@ INCBIN(simple_shaderSpirv, "../resources/simple_shader.spv");
 #else
   #error "Platform not supported"
 #endif
-WGPUSurface RGFW_GetWGPUSurface(WGPUInstance instance, RGFW_window* window);
+
 void adapterCallbackFunction(
         WGPURequestAdapterStatus status,
         WGPUAdapter adapter,
@@ -69,7 +71,7 @@ void deviceCallbackFunction(
 }
 
 int main(){
-    
+
     WGPUInstanceLayerSelection lsel = {
         .chain = {
             .next = NULL,
@@ -79,9 +81,9 @@ int main(){
     const char* layernames[] = {"VK_LAYER_KHRONOS_validation"};
     lsel.instanceLayers = layernames;
     lsel.instanceLayerCount = 1;
-    
+
     WGPUInstanceDescriptor instanceDescriptor = {
-        .nextInChain = 
+        .nextInChain =
         #ifdef NDEBUG
         NULL,
         #else
@@ -98,7 +100,7 @@ int main(){
     adapterCallback.callback = adapterCallbackFunction;
     WGPUAdapter requestedAdapter;
     adapterCallback.userdata1 = (void*)&requestedAdapter;
-    
+
 
     WGPUFuture aFuture = wgpuInstanceRequestAdapter(instance, &adapterOptions, adapterCallback);
     WGPUFutureWaitInfo winfo = {
@@ -135,15 +137,15 @@ int main(){
 
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     RGFW_window* window = RGFW_createWindow("RGFW with WebGPU", (RGFW_rect){0,0,1280,720}, 0);
-    
-    WGPUSurface surface = RGFW_GetWGPUSurface(instance, window);
+
+    WGPUSurface surface = RGFW_window_createSurface_WebGPU(window, instance);
 
     int width, height;
     WGPUSurfaceCapabilities caps = {0};
     WGPUPresentMode desiredPresentMode = WGPUPresentMode_Mailbox;
 
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &caps);
-    
+
     wgpuSurfaceConfigure(surface, &(const WGPUSurfaceConfiguration){
         .alphaMode = WGPUCompositeAlphaMode_Opaque,
         .presentMode = desiredPresentMode,
@@ -152,8 +154,8 @@ int main(){
         .width = width,
         .height = height
     });
-    
-    
+
+
     //WGPUShaderSourceWGSL shaderSourceWgsl = {
     //    .chain = {
     //        .sType = WGPUSType_ShaderSourceWGSL
@@ -163,7 +165,7 @@ int main(){
     //        .length = gsimple_shaderSize
     //    }
     //};
-    
+
     WGPUShaderSourceSPIRV shaderSourceSpirv = {
         .chain = {
             .sType = WGPUSType_ShaderSourceSPIRV
@@ -239,14 +241,14 @@ int main(){
     WGPURenderPipeline rp = wgpuDeviceCreateRenderPipeline(device, &rpdesc);
     const float scale = 0.2f;
     const float vertices[6] = {-scale,-scale,-scale,scale,scale,scale};
-    
+
     WGPUBufferDescriptor bufferDescriptor = {
         .size = sizeof(vertices),
         .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst
     };
     WGPUBuffer vertexBuffer = wgpuDeviceCreateBuffer(device, &bufferDescriptor);
     wgpuQueueWriteBuffer(queue, vertexBuffer, 0, vertices, sizeof(vertices));
-    
+
     WGPURenderBundleEncoderDescriptor rbEncDesc = {
         .colorFormatCount = 1,
         .colorFormats = &colorTargetState.format,
@@ -257,22 +259,23 @@ int main(){
     wgpuRenderBundleEncoderSetPipeline(rbEnc, rp);
     wgpuRenderBundleEncoderSetVertexBuffer(rbEnc, 0, vertexBuffer, 0, WGPU_WHOLE_SIZE);
     wgpuRenderBundleEncoderDraw(rbEnc, 3, 1, 0, 0);
-    WGPURenderBundle renderBundle = wgpuRenderBundleEncoderFinish(rbEnc, NULL);    
+    WGPURenderBundle renderBundle = wgpuRenderBundleEncoderFinish(rbEnc, NULL);
     WGPUSurfaceTexture surfaceTexture;
 
     uint64_t stamp = nanoTime();
     uint64_t frameCount = 0;
     while(!RGFW_window_shouldClose(window)){
-        while (RGFW_window_checkEvent(window)) {
-            if (window->event.type == RGFW_quit) break;
-            
-            if (window->event.type == RGFW_mouseButtonPressed && window->event.button == RGFW_mouseLeft) {
-                printf("You clicked at x: %d, y: %d\n", window->event.point.x, window->event.point.y);
+        RGFW_event event;
+        while (RGFW_window_checkEvent(window, &event)) {
+            if (event.type == RGFW_quit) break;
+
+            if (event.type == RGFW_mouseButtonPressed && event.button == RGFW_mouseLeft) {
+                printf("You clicked at x: %d, y: %d\n", event.point.x, event.point.y);
             }
         }
         wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
         if(surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal){
-            
+
             wgpuSurfaceConfigure(surface, &(const WGPUSurfaceConfiguration){
                 .alphaMode = WGPUCompositeAlphaMode_Opaque,
                 .presentMode = desiredPresentMode,
@@ -311,7 +314,7 @@ int main(){
         //wgpuRenderPassEncoderDraw(rpenc, 3, 1, 0, 0);
         wgpuRenderPassEncoderExecuteBundles(rpenc, 1, &renderBundle);
         wgpuRenderPassEncoderEnd(rpenc);
-        
+
         WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(cenc, NULL);
         wgpuQueueSubmit(queue, 1, &cBuffer);
         wgpuCommandEncoderRelease(cenc);
@@ -328,129 +331,4 @@ int main(){
         }
     }
     wgpuSurfaceRelease(surface);
-}
-
-WGPUSurface RGFW_GetWGPUSurface(WGPUInstance instance, RGFW_window* window) {
-    if (!instance || !window) {
-        fprintf(stderr, "Error: Invalid WGPUInstance or RGFW_window pointer.\n");
-        return NULL;
-    }
-
-    WGPUSurfaceDescriptor surfaceDesc = {0};
-    // The nextInChain will point to the platform-specific source struct
-
-#if defined(RGFW_WINDOWS)
-    // --- Windows Implementation ---
-    WGPUSurfaceSourceWindowsHWND fromHwnd = {0};
-    fromHwnd.chain.sType = WGPUSType_SurfaceSourceWindowsHWND;
-    fromHwnd.hwnd = window->src.window; // Get HWND from RGFW window source
-    if (!fromHwnd.hwnd) {
-        fprintf(stderr, "RGFW Error: HWND is NULL for Windows window.\n");
-        return NULL;
-    }
-    fromHwnd.hinstance = GetModuleHandle(NULL); // Get current process HINSTANCE
-
-    surfaceDesc.nextInChain = (WGPUChainedStruct*)&fromHwnd.chain;
-    return wgpuInstanceCreateSurface(instance, &surfaceDesc);
-
-#elif defined(RGFW_MACOS) && !defined(RGFW_MACOS_X11) // Exclude X11 on Mac builds
-    // --- macOS (Cocoa) Implementation ---
-    NSView* nsView = (NSView*)window->src.view;
-    if (!nsView) {
-        fprintf(stderr, "RGFW Error: NSView is NULL for macOS window.\n");
-        return NULL;
-    }
-
-    // Ensure the view is layer-backed before trying to get/set the layer
-    // Note: RGFW might already do this depending on its configuration.
-    // This call is generally safe to make even if already layer-backed.
-    ((void (*)(id, SEL, BOOL))objc_msgSend)((id)nsView, sel_registerName("setWantsLayer:"), YES);
-
-    id layer = ((id (*)(id, SEL))objc_msgSend)((id)nsView, sel_registerName("layer"));
-
-    // Check if the layer exists and is already a CAMetalLayer
-    if (layer && [layer isKindOfClass:[CAMetalLayer class]]) {
-        // Layer exists and is the correct type, proceed
-    } else if (!layer) {
-        // Layer doesn't exist, create a CAMetalLayer and set it
-        CAMetalLayer* metalLayer = [CAMetalLayer layer];
-        if (!metalLayer) {
-             fprintf(stderr, "RGFW Error: Failed to create CAMetalLayer.\n");
-             return NULL;
-        }
-        ((void (*)(id, SEL, id))objc_msgSend)((id)nsView, sel_registerName("setLayer:"), metalLayer);
-        layer = metalLayer; // Use the newly created layer
-        // printf("Info: Created and assigned CAMetalLayer for NSView.\n");
-    } else {
-        // Layer exists but is NOT a CAMetalLayer - this is an issue.
-        // The view's layer needs to be explicitly set to CAMetalLayer for WebGPU.
-        // This might require changes in how RGFW initializes the view when WebGPU is intended.
-        fprintf(stderr, "RGFW Error: NSView's existing layer is not a CAMetalLayer. Cannot create WebGPU surface.\n");
-        return NULL;
-    }
-
-    // At this point, 'layer' should be a valid CAMetalLayer*
-    WGPUSurfaceSourceMetalLayer fromMetal = {0};
-    fromMetal.chain.sType = WGPUSType_SurfaceSourceMetalLayer;
-    fromMetal.layer = (__bridge CAMetalLayer*)layer; // Use __bridge for ARC compatibility if mixing C/Obj-C
-
-    surfaceDesc.nextInChain = (WGPUChainedStruct*)&fromMetal.chain;
-    return wgpuInstanceCreateSurface(instance, &surfaceDesc);
-
-
-#elif defined(RGFW_UNIX)
-    // --- Unix (Wayland/X11) Implementation ---
-
-    #if defined(RGFW_WAYLAND)
-    // Check if Wayland is actively being used (if both X11 and Wayland are compiled)
-    if (RGFW_usingWayland()) {
-        if (window->src.wl_display && window->src.surface) {
-            WGPUSurfaceSourceWaylandSurface fromWl = {0};
-            fromWl.chain.sType = WGPUSType_SurfaceSourceWaylandSurface;
-            fromWl.display = window->src.wl_display; // Get wl_display from RGFW
-            fromWl.surface = window->src.surface;   // Get wl_surface from RGFW
-
-            surfaceDesc.nextInChain = (WGPUChainedStruct*)&fromWl.chain;
-            return wgpuInstanceCreateSurface(instance, &surfaceDesc);
-        }
-        fprintf(stderr, "RGFW Info: Using Wayland, but wl_display or wl_surface is NULL.\n");
-        return NULL; // Cannot create Wayland surface without handles
-    }
-    #endif // RGFW_WAYLAND
-
-    #if defined(RGFW_X11)
-    // Fallback to X11 if Wayland isn't used or not compiled
-    // (or if RGFW_usingWayland() returned false)
-    {
-        if (window->src.display && window->src.window) {
-            WGPUSurfaceSourceXlibWindow fromXlib = {0};
-            fromXlib.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
-            fromXlib.display = window->src.display; // Get Display* from RGFW
-            fromXlib.window = window->src.window;   // Get Window from RGFW
-
-            surfaceDesc.nextInChain = (WGPUChainedStruct*)&fromXlib.chain;
-            return wgpuInstanceCreateSurface(instance, &surfaceDesc);
-        }
-        fprintf(stderr, "RGFW Info: Using X11 (or fallback), but Display* or Window is NULL.\n");
-        return NULL; // Cannot create X11 surface without handles
-    }
-    #endif // RGFW_X11
-
-    // If RGFW_UNIX is defined but neither RGFW_WAYLAND nor RGFW_X11 resulted in a surface
-    fprintf(stderr, "RGFW Error: RGFW_UNIX defined, but no Wayland or X11 surface could be created.\n");
-    return NULL;
-
-#elif defined(__EMSCRIPTEN__)
-    WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc = {0};
-    canvasDesc.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
-    canvasDesc.selector = (WGPUStringView){.data = "#canvas", .length = 7};
-    
-    surfaceDesc.nextInChain = &canvasDesc.chain;
-    return wgpuInstanceCreateSurface(instance, &surfaceDesc);
-#else
-    // --- Other/Unsupported Platforms ---
-    #warning "RGFW_GetWGPUSurface: Platform not explicitly supported (only Windows, macOS/Cocoa, Wayland, X11 implemented)."
-    fprintf(stderr, "RGFW Error: Platform not supported by RGFW_GetWGPUSurface.\n");
-    return NULL;
-#endif
 }
