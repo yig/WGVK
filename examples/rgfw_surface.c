@@ -99,13 +99,14 @@ typedef struct LoopContext{
 void mainloop(void* userdata){
     LoopContext* context = (LoopContext*)userdata;
 
-    //RGFW_event event;
-    //while (RGFW_window_checkEvent(context->window, &event)) {
-    //    if (event.type == RGFW_quit) break;
-    //    if (event.type == RGFW_mouseButtonPressed && event.button == RGFW_mouseLeft) {
-    //        printf("You clicked at x: %d, y: %d\n", event.point.x, event.point.y);
-    //    }
-    //}
+    RGFW_event event;
+    while (RGFW_window_checkEvent(context->window, &event)) {
+        if (event.type == RGFW_quit) break;
+        if (event.type == RGFW_mouseButtonPressed && event.button == RGFW_mouseLeft) {
+            printf("You clicked at x: %d, y: %d\n", event.point.x, event.point.y);
+        }
+    }
+
     WGPUSurfaceTexture surfaceTexture = {};
 
     wgpuSurfaceGetCurrentTexture(context->surface, &surfaceTexture);
