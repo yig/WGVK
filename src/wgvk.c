@@ -1174,62 +1174,46 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     }
     // Specify device features
 
-    VkPhysicalDeviceExtendedDynamicState3PropertiesEXT props = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_PROPERTIES_EXT,
-        .pNext = NULL,
-        .dynamicPrimitiveTopologyUnrestricted = VK_TRUE
-    };
-    
-    VkPhysicalDeviceFeatures deviceFeatures zeroinit;
-    //deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    //vkGetPhysicalDeviceFeatures2(adapter->physicalDevice, &deviceFeatures);
-    vkGetPhysicalDeviceFeatures(adapter->physicalDevice, &deviceFeatures);
-
-    VkDeviceCreateInfo createInfo zeroinit;
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-
-    VkPhysicalDeviceVulkan13Features v13features zeroinit;
-    v13features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    #if VULKAN_USE_DYNAMIC_RENDERING == 1
-    v13features.dynamicRendering = VK_TRUE;
-    #endif
-
-    createInfo.pNext = &v13features;
-    //features.pNext = &props;
-
-    createInfo.queueCreateInfoCount = queueCreateInfoCount;
-    createInfo.pQueueCreateInfos = queueCreateInfos;
-
-    createInfo.enabledExtensionCount = extInsertIndex;
-    createInfo.ppEnabledExtensionNames = deviceExtensionsFound;
-
-    createInfo.pEnabledFeatures = &deviceFeatures;
-    #if VULKAN_ENABLE_RAYTRACING == 1
     VkPhysicalDeviceBufferDeviceAddressFeaturesKHR deviceFeaturesAddressKhr = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR,
-        .bufferDeviceAddress = VK_TRUE
     };
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR pipelineFeatures = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-        .rayTracingPipeline = VK_TRUE,
+        .pNext = &deviceFeaturesAddressKhr,
     };
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-        .accelerationStructure = VK_TRUE,
+        .pNext = &pipelineFeatures,
     };
 
-    v13features.pNext = &deviceFeaturesAddressKhr;
-    deviceFeaturesAddressKhr.pNext = &accelerationStructureFeatures;
-    accelerationStructureFeatures.pNext = &pipelineFeatures;
-
-    #endif
+    VkPhysicalDeviceVulkan13Features v13features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .pNext = &accelerationStructureFeatures,
+    };
     
-    // (Optional) Enable validation layers for device-specific debugging
+    VkPhysicalDeviceFeatures2 deviceFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext =  &v13features
+    };
+    vkGetPhysicalDeviceFeatures2(adapter->physicalDevice, &deviceFeatures);
+
+    VkDeviceCreateInfo createInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = &deviceFeatures,
+        .queueCreateInfoCount = queueCreateInfoCount,
+        .pQueueCreateInfos = queueCreateInfos,
+        .enabledExtensionCount = extInsertIndex,
+        .ppEnabledExtensionNames = deviceExtensionsFound,
+    };
+    
     WGPUDevice retDevice = RL_CALLOC(1, sizeof(WGPUDeviceImpl));
     retDevice->refCount = 1;
     WGPUQueue retQueue = RL_CALLOC(1, sizeof(WGPUQueueImpl));
     retQueue->refCount = 0;
     VkResult dcresult = vkCreateDevice(adapter->physicalDevice, &createInfo, NULL, &(retDevice->device));
+
+
+
     struct VolkDeviceTable table = {0};
 
     if (dcresult != VK_SUCCESS) {
@@ -1239,6 +1223,9 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
         volkLoadDeviceTable(&retDevice->functions, retDevice->device);
         retDevice->functions.vkQueuePresentKHR = (PFN_vkQueuePresentKHR)vkGetDeviceProcAddr(retDevice->device, "vkQueuePresentKHR");
     }
+    retDevice->capabilities.dynamicRendering = v13features.dynamicRendering;
+    retDevice->capabilities.raytracing = pipelineFeatures.rayTracingPipeline && accelerationStructureFeatures.accelerationStructure;
+    retDevice->capabilities.shaderDeviceAddress = deviceFeaturesAddressKhr.bufferDeviceAddress;
     retDevice->uncapturedErrorCallbackInfo = descriptor->uncapturedErrorCallbackInfo;
 
     // Retrieve and assign queues
@@ -1336,7 +1323,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     
     vmaCreatePool(retDevice->allocator, &vpci, &retDevice->aligned_hostVisiblePool);
     #endif
-    wgvkAllocator_init(&retDevice->builtinAllocator, adapter->physicalDevice, retDevice->device, &retDevice->functions);
+    wgvkAllocator_init(&retDevice->builtinAllocator, adapter->physicalDevice, retDevice, &retDevice->functions);
 
     
     for(uint32_t i = 0;i < framesInFlight;i++){
@@ -6696,13 +6683,13 @@ static VkResult wgvkDeviceMemoryPool_create_chunk(WgvkDeviceMemoryPool* pool, si
 
     VkMemoryAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        #if VULKAN_ENABLE_RAYTRACING == 1
-        .pNext = &flagsInfo,
-        #endif
         .allocationSize = size,
         .memoryTypeIndex = pool->memoryTypeIndex,
     };
-    VkResult result = pool->pFunctions->vkAllocateMemory(pool->device, &allocInfo, NULL, &new_chunk->memory);
+    if(pool->device->capabilities.shaderDeviceAddress){
+        allocInfo.pNext = &flagsInfo;
+    }
+    VkResult result = pool->pFunctions->vkAllocateMemory(pool->device->device, &allocInfo, NULL, &new_chunk->memory);
     if (result != VK_SUCCESS) {
         allocator_destroy(&new_chunk->allocator);
         return result;
@@ -6761,13 +6748,13 @@ static void wgvkDeviceMemoryPool_destroy(WgvkDeviceMemoryPool* pool) {
     if (!pool) return;
     for (uint32_t i = 0; i < pool->chunk_count; ++i) {
         WgvkMemoryChunk* chunk = &pool->chunks[i];
-        vkFreeMemory(pool->device, chunk->memory, NULL);
+        vkFreeMemory(pool->device->device, chunk->memory, NULL);
         allocator_destroy(&chunk->allocator);
     }
     free(pool->chunks);
 }
 
-RGAPI VkResult wgvkAllocator_init(WgvkAllocator* allocator, VkPhysicalDevice physicalDevice, VkDevice device, struct VolkDeviceTable* dtable) {
+RGAPI VkResult wgvkAllocator_init(WgvkAllocator* allocator, VkPhysicalDevice physicalDevice, WGPUDevice device, struct VolkDeviceTable* dtable) {
     memset(allocator, 0, sizeof(WgvkAllocator));
     allocator->device = device;
     allocator->physicalDevice = physicalDevice;

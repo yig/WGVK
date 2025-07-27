@@ -1262,7 +1262,7 @@ typedef struct wgvkAllocation {
     VkDeviceMemory memory;
 } wgvkAllocation;
 
-RGAPI VkResult wgvkAllocator_init(WgvkAllocator* allocator, VkPhysicalDevice physicalDevice, VkDevice device, struct VolkDeviceTable* pFunctions);
+RGAPI VkResult wgvkAllocator_init(WgvkAllocator* allocator, VkPhysicalDevice physicalDevice, WGPUDevice device, struct VolkDeviceTable* pFunctions);
 RGAPI void wgvkAllocator_destroy(WgvkAllocator* allocator);
 RGAPI bool wgvkAllocator_alloc(WgvkAllocator* allocator, const VkMemoryRequirements* requirements, VkMemoryPropertyFlags propertyFlags, wgvkAllocation* out_allocation);
 RGAPI void wgvkAllocator_free(const wgvkAllocation* allocation);
@@ -1298,7 +1298,7 @@ struct WgvkDeviceMemoryPool {
     WgvkMemoryChunk* chunks;
     uint32_t chunk_count;
     uint32_t chunk_capacity;
-    VkDevice device;
+    WGPUDevice device;
     struct VolkDeviceTable* pFunctions;
     VkPhysicalDevice physicalDevice;
     uint32_t memoryTypeIndex;
@@ -1308,7 +1308,7 @@ struct WgvkAllocator {
     WgvkDeviceMemoryPool* pools;
     uint32_t pool_count;
     uint32_t pool_capacity;
-    VkDevice device;
+    WGPUDevice device;
     struct VolkDeviceTable* pFunctions;
     VkPhysicalDevice physicalDevice;
     VkPhysicalDeviceMemoryProperties memoryProperties;
@@ -1987,12 +1987,19 @@ typedef struct FenceCache{
     VkFenceVector cachedFences;
 }FenceCache;
 
+typedef struct WGVKCapabilities{
+    WGPUBool raytracing;
+    WGPUBool shaderDeviceAddress;
+    WGPUBool dynamicRendering;
+}WGVKCapabilities;
+
 typedef struct WGPUDeviceImpl{
     VkDevice device;
     refcount_type refCount;
     WGPUAdapter adapter;
     WGPUQueue queue;
     size_t submittedFrames;
+    WGVKCapabilities capabilities;
     WgvkAllocator builtinAllocator;
     #if USE_VMA_ALLOCATOR == 1
     VmaAllocator allocator;
