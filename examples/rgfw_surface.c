@@ -1,19 +1,13 @@
+#define RGFW_WEBGPU
+#define RGFW_IMPLEMENTATION
+#include <external/RGFW.h>
 
-#include <webgpu/webgpu.h>
 #include <external/incbin.h>
 #include <stdio.h>
 
-#define RGFW_WEBGPU
-#ifndef EMSCRIPTEN
-#define RGFW_X11
-#else
-#include <emscripten/emscripten.h>
-#endif
-#define RGFW_IMPLEMENTATION
 
-#include <external/RGFW.h>
 
-const char simpleShaderWGSL[] = 
+const char simpleShaderWGSL[] =
 "struct VertexInput {\n"
 "    @location(0) position: vec2f\n"
 "};\n"
@@ -216,7 +210,7 @@ int main(){
 
     wgpuInstanceWaitAny(instance, 1, &winfo, ~0ull);
     WGPUStringView deviceLabel = {"WGPU Device", sizeof("WGPU Device") - 1};
-    
+
     WGPUDeviceDescriptor deviceDescriptor = {
         .nextInChain = 0,
         .label = deviceLabel,
@@ -378,7 +372,7 @@ int main(){
         mainloop((void*)ctx);
     }
     #else
-    
+
     emscripten_set_main_loop_arg(mainloop, 0, 0, ctx);
     //for(;;){}
     #endif
