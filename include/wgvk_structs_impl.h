@@ -1899,6 +1899,7 @@ typedef struct WGPUBufferImpl{
     uint32_t cacheIndex;
     WGPUBufferUsage usage;
     WGPUBufferMapState mapState;
+    void* mappedRange;
     size_t capacity;
     AllocationType allocationType;
     union{

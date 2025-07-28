@@ -31,9 +31,12 @@
 #ifndef USE_VMA_ALLOCATOR
     #define USE_VMA_ALLOCATOR 0
 #endif
-#define VULKAN_USE_DYNAMIC_RENDERING 1
-#define VULKAN_ENABLE_RAYTRACING 1
-
+#ifndef VULKAN_USE_DYNAMIC_RENDERING
+    #define VULKAN_USE_DYNAMIC_RENDERING 1
+#endif
+#ifndef VULKAN_ENABLE_RAYTRACING
+    #define VULKAN_ENABLE_RAYTRACING 1
+#endif
 #if !defined(RL_MALLOC) && !defined(RL_CALLOC) && !defined(RL_REALLOC) && !defined(RL_FREE)
 #define RL_MALLOC  malloc
 #define RL_CALLOC  calloc

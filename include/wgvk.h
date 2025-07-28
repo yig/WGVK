@@ -249,11 +249,11 @@ typedef enum WGPUSType {
     WGPUSType_SurfaceSourceAndroidNativeWindow = 0x00000008,
     WGPUSType_SurfaceSourceXCBWindow = 0x00000009,
     WGPUSType_SurfaceColorManagement = 0x0000000A,
-
+    WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector = 0x00040000,
     // non-standard sTypes
     WGPUSType_InstanceValidationLayerSelection = 0x10000001,
     WGPUSType_BufferAllocatorSelector = 0x10000002,
-}WGPUSType;
+}WGPUSType WGPU_ENUM_ATTRIBUTE;
 
 typedef enum WGPUCallbackMode {
     WGPUCallbackMode_WaitAnyOnly = 0x00000001,
@@ -1011,6 +1011,11 @@ typedef struct WGPUSurfaceSourceAndroidNativeWindow {
     WGPUChainedStruct chain;
     void* window;
 } WGPUSurfaceSourceAndroidNativeWindow;
+
+typedef struct WGPUEmscriptenSurfaceSourceCanvasHTMLSelector {
+    WGPUChainedStruct chain;
+    WGPUStringView selector;
+} WGPUEmscriptenSurfaceSourceCanvasHTMLSelector;
 
 typedef struct WGPUSurfaceDescriptor{
     WGPUChainedStruct* nextInChain;

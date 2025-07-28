@@ -1409,10 +1409,26 @@ WGPUQueue wgpuDeviceGetQueue(WGPUDevice device){
     wgpuQueueAddRef(device->queue);
     return device->queue;
 }
+typedef struct userdataformapbufferasync{
+    WGPUBuffer buffer;
+    WGPUMapMode mode;
+    size_t offset;
+    size_t size;
+    WGPUBufferMapCallbackInfo info;
+}userdataformapbufferasync;
 
+void wgpuBufferMapSync(void* data){
+    userdataformapbufferasync* info = (userdataformapbufferasync*)data;
+    void* mapdata = NULL;
+    wgpuBufferMap(info->buffer, info->mode, info->offset, info->size, &mapdata);
+    
+    info->info.callback(WGPUMapAsyncStatus_Success, (WGPUStringView){"", 0}, info->info.userdata1, info->info.userdata2);
+}
+void wgpuBufferMap(WGPUBuffer buffer, WGPUMapMode mapmode, size_t offset, size_t size, void** data);
 
 WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor* desc){
     //vmaCreateAllocator(const VmaAllocatorCreateInfo * _Nonnull pCreateInfo, VmaAllocator  _Nullable * _Nonnull pAllocator)
+    
     if(desc->usage & WGPUBufferUsage_MapRead){
         if(desc->usage & ~(WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead)){
             DeviceCallback(device, WGPUErrorType_Validation, STRVIEW("WGPUBufferUsage_MapRead used with something other than WGPUBufferUsage_CopyDst"));
@@ -1489,7 +1505,9 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device, const WGPUBufferDescriptor*
     }
     if(desc->mappedAtCreation){
         // TODO
-        // wgpuBufferMap(wgpuBuffer);
+        void* mapData = NULL;
+        wgpuBufferMap(wgpuBuffer, (desc->usage & WGPUBufferUsage_MapWrite) ? WGPUMapMode_Write : WGPUMapMode_Read, 0, desc->size, &mapData);
+
     }
     return wgpuBuffer;
 }
@@ -1506,6 +1524,7 @@ void wgpuBufferMap(WGPUBuffer buffer, WGPUMapMode mapmode, size_t offset, size_t
         wgpuFenceRelease(buffer->latestFence);
         buffer->latestFence = NULL;    
     }
+    buffer->mapState = WGPUBufferMapState_Mapped;
     switch(buffer->allocationType){
         case AllocationTypeBuiltin:{
             wgvkAllocation* allocation = &buffer->builtinAllocation;
@@ -1515,14 +1534,17 @@ void wgpuBufferMap(WGPUBuffer buffer, WGPUMapMode mapmode, size_t offset, size_t
                 wgvk_assert(mapResult == VK_SUCCESS, "Mapping memory failed: %s", vkErrorString(mapResult));
             }
             *data = (void*)(((uint8_t*)chunk->mapped) + allocation->offset + offset);
+            buffer->mappedRange = data;
         }break;
         #if USE_VMA_ALLOCATOR == 1
         case AllocationTypeVMA: {
             vmaMapMemory(buffer->device->allocator, buffer->vmaAllocation, data);
+            buffer->mappedRange = data
         }break;
         #endif
         case AllocationTypeJustMemory: {
             device->functions.vkMapMemory(device->device, buffer->justMemory, offset, size, 0, data);
+            buffer->mappedRange = data;
         }break;
         default:
         rg_unreachable();
@@ -1533,6 +1555,8 @@ void wgpuBufferMap(WGPUBuffer buffer, WGPUMapMode mapmode, size_t offset, size_t
 
 void wgpuBufferUnmap(WGPUBuffer buffer){
     WGPUDevice device = buffer->device;
+    buffer->mappedRange = NULL;
+    buffer->mapState = WGPUBufferMapState_Unmapped;
     switch(buffer->allocationType){
         case AllocationTypeBuiltin:{
             wgvkAllocation* allocation = &buffer->builtinAllocation;
@@ -1553,19 +1577,8 @@ void wgpuBufferUnmap(WGPUBuffer buffer){
         rg_unreachable();
     }
 }
-typedef struct userdataformapbufferasync{
-    WGPUBuffer buffer;
-    WGPUMapMode mode;
-    size_t offset;
-    size_t size;
-    WGPUBufferMapCallbackInfo info;
-}userdataformapbufferasync;
-void wgpuBufferMapSync(void* data){
-    userdataformapbufferasync* info = (userdataformapbufferasync*)data;
-    void* mapdata = NULL;
-    wgpuBufferMap(info->buffer, info->mode, info->offset, info->size, &mapdata);
-    info->info.callback(WGPUMapAsyncStatus_Success, (WGPUStringView){"", 0}, info->info.userdata1, info->info.userdata2);
-}
+
+
 WGPUFuture wgpuBufferMapAsync(WGPUBuffer buffer, WGPUMapMode mode, size_t offset, size_t size, WGPUBufferMapCallbackInfo callbackInfo){
     userdataformapbufferasync* info = (userdataformapbufferasync*)RL_CALLOC(1, sizeof(userdataformapbufferasync));
     info->buffer = buffer;
@@ -3062,17 +3075,18 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                 destination_->graphicsBindGroups[setBindGroup->groupIndex] = setBindGroup->group;
             else
                 destination_->computeBindGroups[setBindGroup->groupIndex] = setBindGroup->group;
-                
-            device->functions.vkCmdBindDescriptorSets(
-                destination,
-                setBindGroup->bindPoint,
-                destination_->lastLayout,
-                setBindGroup->groupIndex,
-                1,
-                &setBindGroup->group->set,
-                setBindGroup->dynamicOffsetCount,
-                setBindGroup->dynamicOffsets
-            );
+            if(destination_->lastLayout){
+                device->functions.vkCmdBindDescriptorSets(
+                    destination,
+                    setBindGroup->bindPoint,
+                    destination_->lastLayout,
+                    setBindGroup->groupIndex,
+                    1,
+                    &setBindGroup->group->set,
+                    setBindGroup->dynamicOffsetCount,
+                    setBindGroup->dynamicOffsets
+                );
+            }
         }
         break;
         case rp_command_type_set_render_pipeline: {
@@ -6254,8 +6268,12 @@ void wgpuBindGroupLayoutSetLabel(WGPUBindGroupLayout bindGroupLayout, WGPUString
 // Stubs for missing Methods of Buffer
 void wgpuBufferDestroy(WGPUBuffer buffer) {}
 void const * wgpuBufferGetConstMappedRange(WGPUBuffer buffer, size_t offset, size_t size) { return NULL; }
-void * wgpuBufferGetMappedRange(WGPUBuffer buffer, size_t offset, size_t size) { return NULL; }
-WGPUBufferMapState wgpuBufferGetMapState(WGPUBuffer buffer) { return WGPUBufferMapState_Unmapped; }
+void * wgpuBufferGetMappedRange(WGPUBuffer buffer, size_t offset, size_t size) {
+    return (void*)((char*)buffer->mappedRange + offset);
+}
+WGPUBufferMapState wgpuBufferGetMapState(WGPUBuffer buffer) { 
+    return buffer->mapState;
+}
 WGPUBufferUsage wgpuBufferGetUsage(WGPUBuffer buffer) { return buffer->usage; }
 WGPUStatus wgpuBufferReadMappedRange(WGPUBuffer buffer, size_t offset, void * data, size_t size) { return WGPUStatus_Error; }
 void wgpuBufferSetLabel(WGPUBuffer buffer, WGPUStringView label) {}

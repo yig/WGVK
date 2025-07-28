@@ -73,13 +73,13 @@ void main_loop(void* user_data) {
         WGPUPresentMode desiredPresentMode = WGPUPresentMode_Immediate;
 
         WGPUSurfaceConfiguration surfaceConfig = {
+            .device = device,
+            .format = WGPUTextureFormat_BGRA8Unorm,
+            .usage = WGPUTextureUsage_RenderAttachment,
+            .width =  (uint32_t)width,
+            .height = (uint32_t)height,
             .alphaMode = WGPUCompositeAlphaMode_Opaque,
             .presentMode = desiredPresentMode,
-            .device = device,
-            .usage = WGPUTextureUsage_RenderAttachment,
-            .format = WGPUTextureFormat_BGRA8Unorm,
-            .width = width,
-            .height = height
         };
         
         wgpuSurfaceConfigure(ctx->base.surface, &surfaceConfig);
