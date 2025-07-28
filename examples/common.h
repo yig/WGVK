@@ -204,7 +204,7 @@ wgpu_base wgpu_init(){
         .hwnd = glfwGetWin32Window(window),
         .hinstance = GetModuleHandle(NULL)
     };
-    WGPUChainedStruct* surfaceChain = &surfaceChainObj;
+    WGPUChainedStruct* surfaceChain = &surfaceChainObj.chain;
     #elif !defined(__EMSCRIPTEN__)
     WGPUSurfaceSourceXlibWindow surfaceChainX11;
     Display* x11_display = glfwGetX11Display();

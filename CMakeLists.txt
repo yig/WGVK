@@ -49,7 +49,7 @@ function(wgvk_bundle_libraries output_target)
   endif()
   endforeach()
 
-  add_library(${output_target} STATIC ${all_objects})
+  add_library(${output_target} ${all_objects})
   add_dependencies(${output_target} ${ARGN})
 endfunction()
 
@@ -120,24 +120,36 @@ if(WGVK_BUILD_WGSL_SUPPORT)
   target_include_directories(tint_c_api PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
   target_include_directories(tint_c_api PRIVATE "${dawn_SOURCE_DIR}")
   target_compile_features(tint_c_api PRIVATE cxx_std_20)
-  if(NOT MSVC)
-    target_compile_options(tint_c_api PRIVATE "-fno-rtti")
-  endif()
+  target_compile_options(tint_c_api PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-fno-rtti>
+    $<$<CXX_COMPILER_ID:Clang>:-fno-rtti>
+    $<$<CXX_COMPILER_ID:AppleClang>:-fno-rtti>
+    $<$<CXX_COMPILER_ID:MSVC>:/GR->  # disable RTTI in MSVC
+  )
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_WGSL=1)
   
   # Bundle wgvk_core and its dependencies into the final `wgvk` library.
   wgvk_bundle_libraries(wgvk ${WGVK_PRIMARY_TARGET_NAME} tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api)
-
-  target_link_libraries(wgvk INTERFACE ${WGVK_PRIMARY_TARGET_NAME})
+  if(BUILD_SHARED_LIBS)
+    target_link_libraries(wgvk INTERFACE ${WGVK_PRIMARY_TARGET_NAME})
+    target_link_libraries(wgvk PUBLIC tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api absl_strings)
+  else()
+    target_link_libraries(wgvk INTERFACE ${WGVK_PRIMARY_TARGET_NAME}) 
+  endif()
 
 else()
   set(WGVK_PRIMARY_TARGET_NAME "wgvk")
 
-  add_library(${WGVK_PRIMARY_TARGET_NAME} STATIC ${WGVK_CORE_SRC_LIST})
+  add_library(${WGVK_PRIMARY_TARGET_NAME} ${WGVK_CORE_SRC_LIST})
   # When not bundling, `wgvk` is the primary target. We use PUBLIC so that
   # any consumers (like the examples) inherit these properties correctly.
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
   target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
+endif()
+if(BUILD_SHARED_LIBS)
+  set_target_properties(wgvk_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  set_target_properties(wgvk PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  set_target_properties(tint_c_api PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 # Now, we apply all remaining properties to the primary target using the variable.
@@ -193,7 +205,7 @@ if(WGVK_BUILD_EXAMPLES)
   # Examples always link against the final `wgvk` target. Thanks to the fix above,
   # they will now correctly inherit all necessary compile definitions.
   target_link_libraries(glfw_surface PUBLIC wgvk glfw)
-  target_link_libraries(basic_wgsl_shader PUBLIC wgvk glfw)
+  target_link_libraries(basic_wgsl_shader PUBLIC wgvk glfw m)
   target_link_libraries(raytracing PUBLIC wgvk glfw)
   target_link_libraries(basic_compute PUBLIC wgvk)
   #target_link_libraries(rgfw_surface PUBLIC wgvk Xrandr)
