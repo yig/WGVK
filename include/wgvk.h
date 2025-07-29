@@ -203,20 +203,21 @@ typedef enum WGPUStatus {
     WGPUStatus_Error = 0x00000002,
     WGPUStatus_Force32 = 0x7FFFFFFF
 } WGPUStatus WGPU_ENUM_ATTRIBUTE;
+
 typedef enum WGPUWaitStatus {
-    WGPUWaitStatus_Success = 0x00000001,
+    WGPUWaitStatus_Success  = 0x00000001,
     WGPUWaitStatus_TimedOut = 0x00000002,
-    WGPUWaitStatus_Error = 0x00000003,
-    WGPUWaitStatus_Force32 = 0x7FFFFFFF
+    WGPUWaitStatus_Error    = 0x00000003,
+    WGPUWaitStatus_Force32  = 0x7FFFFFFF
 } WGPUWaitStatus;
 
-typedef enum WGPUPresentMode{ 
+typedef enum WGPUPresentMode{
     WGPUPresentMode_Undefined = 0x00000000,
     WGPUPresentMode_Fifo = 0x00000001,
     WGPUPresentMode_FifoRelaxed = 0x00000002,
     WGPUPresentMode_Immediate = 0x00000003,
     WGPUPresentMode_Mailbox = 0x00000004,
-}WGPUPresentMode;
+} WGPUPresentMode;
 
 typedef enum WGPUTextureAspect {
     WGPUTextureAspect_Undefined   = 0x00000000,
@@ -251,8 +252,9 @@ typedef enum WGPUSType {
     WGPUSType_SurfaceColorManagement = 0x0000000A,
     WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector = 0x00040000,
     // non-standard sTypes
-    WGPUSType_InstanceValidationLayerSelection = 0x10000001,
+    WGPUSType_InstanceLayerSelection = 0x10000001,
     WGPUSType_BufferAllocatorSelector = 0x10000002,
+    WGPUSType_ShaderSourceGLSL = 0x10000003,
 }WGPUSType WGPU_ENUM_ATTRIBUTE;
 
 typedef enum WGPUCallbackMode {
@@ -1453,6 +1455,12 @@ typedef struct WGPUShaderSourceWGSL {
     WGPUChainedStruct chain;
     WGPUStringView code;
 } WGPUShaderSourceWGSL;
+
+typedef struct WGPUShaderSourceGLSL {
+    WGPUChainedStruct chain;
+    WGPUShaderStage stage;
+    WGPUStringView code;
+} WGPUShaderSourceGLSL;
 
 typedef struct WGPUShaderModuleDescriptor {
     WGPUChainedStruct* nextInChain;

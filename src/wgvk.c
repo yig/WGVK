@@ -815,7 +815,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     }
 
     if (descriptor && descriptor->nextInChain) {
-        if (((WGPUChainedStruct*)descriptor->nextInChain)->sType == WGPUSType_InstanceValidationLayerSelection) {
+        if (((WGPUChainedStruct*)descriptor->nextInChain)->sType == WGPUSType_InstanceLayerSelection) {
             ils = (WGPUInstanceLayerSelection*)descriptor->nextInChain;
             for(uint32_t l = 0;l < ils->instanceLayerCount;l++){
                 const char* layerName = ils->instanceLayers[l];
