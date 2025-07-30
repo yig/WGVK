@@ -5440,6 +5440,12 @@ RGAPI void ru_trackTextureView     (ResourceUsage* resourceUsage, WGPUTextureVie
         ++view->refCount;
     }
 }
+RGAPI void ru_trackRaytracingPipeline(ResourceUsage* resourceUsage, WGPURaytracingPipeline raytracingPipeline){
+    if(RaytracingPipelineUsageSet_add(&resourceUsage->referencedRaytracingPipelines, raytracingPipeline)){
+        ++raytracingPipeline->refCount;
+    }
+}
+
 RGAPI void ru_trackRenderPipeline(ResourceUsage* resourceUsage, WGPURenderPipeline renderPipeline){
     if(RenderPipelineUsageSet_add(&resourceUsage->referencedRenderPipelines, renderPipeline)){
         ++renderPipeline->refCount;
@@ -7680,6 +7686,44 @@ void wgpuCommandEncoderBuildRayTracingAccelerationContainer(WGPUCommandEncoder e
     }
 }
 
+
+void wgpuCommandEncoderCopyRayTracingAccelerationContainer(WGPUCommandEncoder encoder, WGPURayTracingAccelerationContainer source, WGPURayTracingAccelerationContainer dest){
+
+}
+void wgpuCommandEncoderUpdateRayTracingAccelerationContainer(WGPUCommandEncoder encoder, WGPURayTracingAccelerationContainer container){
+
+}
+
+void wgpuRaytracingPassEncoderSetPipeline     (WGPURaytracingPassEncoder rte, WGPURaytracingPipeline raytracingPipeline){
+
+    ru_trackRaytracingPipeline(&rte->resourceUsage, raytracingPipeline);
+    rte->device->functions.vkCmdBindPipeline(rte->cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, raytracingPipeline->raytracingPipeline);
+}
+void wgpuRaytracingPassEncoderSetBindGroup    (WGPURaytracingPassEncoder cpe, uint32_t groupIndex, WGPUBindGroup bindGroup, uint32_t dynamicOffsetCount, const uint32_t* dynamicOffsets){
+    RenderPassCommandSetBindGroup setBindGroup = {
+        .groupIndex = groupIndex,
+        .group = bindGroup,
+        .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+        .dynamicOffsetCount = dynamicOffsetCount,
+        .dynamicOffsets = dynamicOffsets
+    };
+
+    RenderPassCommandGeneric cmd = {
+        .type = rp_command_type_set_bind_group,
+        .setBindGroup = {
+            .groupIndex = groupIndex,
+            .group = bindGroup,
+            .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+            .dynamicOffsetCount = dynamicOffsetCount,
+            .dynamicOffsets = dynamicOffsets
+        }
+    };
+    cpe->bindGroups[groupIndex] = bindGroup;
+    //ru_trackBindGroup(&cpe->resourceUsage, bindGroup);
+}
+void wgpuRaytracingPassEncoderTraceRays       (WGPURaytracingPassEncoder cpe, uint32_t rayGenerationOffset, uint32_t rayHitOffset, uint32_t rayMissOffset, uint32_t width, uint32_t height, uint32_t depth){
+
+}
 
 
 

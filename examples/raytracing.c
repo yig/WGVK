@@ -4,6 +4,20 @@
 #include <math.h>
 
 #define vertexFloatCount 9
+WGPUShaderModule compileGLSLModule(const char* source){
+    WGPUShaderSourceGLSL glslSource = {
+    .chain.sType = WGPUSType_ShaderSourceGLSL,
+        .code = {
+            source,
+            WGPU_STRLEN
+        },
+        .stage = WGPUShaderStage_Vertex
+    };
+    WGPUShaderModuleDescriptor vertexMD = {
+        .nextInChain = &glslSource.chain
+    };
+    wgpuDeviceCreateShaderModule(base.device, &vertexMD);
+}
 
 int main(){
     wgpu_base base = wgpu_init();
@@ -53,7 +67,6 @@ int main(){
         .transform = identity,
         .geometryContainer = blas,
     };
-    
     {
         WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(base.device, NULL);
         wgpuCommandEncoderBuildRayTracingAccelerationContainer(enc, blas);

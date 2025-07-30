@@ -1368,6 +1368,7 @@ typedef enum RCPassCommandType{
     rp_command_type_multi_draw_indexed_indirect,
     rp_command_type_multi_draw_indirect,
     rp_command_type_enum_count,
+    rt_command_type_trace_rays,
     rp_command_type_set_force32 = 0x7fffffff
 }RCPassCommandType;
 
@@ -1487,6 +1488,15 @@ typedef struct RenderPassCommandMultiDrawIndirect {
     uint64_t drawCountBufferOffset;
 } RenderPassCommandMultiDrawIndirect;
 
+typedef struct RaytracingPassCommandTraceRays{
+    uint32_t rayGenerationOffset;
+    uint32_t rayHitOffset;
+    uint32_t rayMissOffset;
+    uint32_t width;
+    uint32_t height;
+    uint32_t depth;
+}RaytracingPassCommandTraceRays;
+
 typedef struct RenderPassCommandBegin{
     WGPUStringView label;
     size_t colorAttachmentCount;
@@ -1521,6 +1531,8 @@ typedef struct RenderPassCommandGeneric {
         ComputePassCommandSetPipeline setComputePipeline;
         ComputePassCommandDispatchWorkgroups dispatchWorkgroups;
         ComputePassCommandDispatchWorkgroupsIndirect dispatchWorkgroupsIndirect;
+        RaytracingPassCommandTraceRays traceRays;
+        
     };
 }RenderPassCommandGeneric;
 
@@ -1536,6 +1548,7 @@ DEFINE_PTR_HASH_SET (CONTAINERAPI, ImageViewUsageSet, WGPUTextureView)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, WGPURenderPassEncoderSet, WGPURenderPassEncoder)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, RenderPipelineUsageSet, WGPURenderPipeline)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, ComputePipelineUsageSet, WGPUComputePipeline)
+DEFINE_PTR_HASH_SET (CONTAINERAPI, RaytracingPipelineUsageSet, WGPURaytracingPipeline)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, RenderBundleUsageSet, WGPURenderBundle)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, QuerySetUsageSet, WGPUQuerySet)
 DEFINE_PTR_HASH_SET (CONTAINERAPI, WGPUComputePassEncoderSet, WGPUComputePassEncoder)
@@ -1582,6 +1595,7 @@ typedef struct ResourceUsage{
     SamplerUsageSet referencedSamplers;
     RenderPipelineUsageSet referencedRenderPipelines;
     ComputePipelineUsageSet referencedComputePipelines;
+    RaytracingPipelineUsageSet referencedRaytracingPipelines;
     RenderBundleUsageSet referencedRenderBundles;
     QuerySetUsageSet referencedQuerySets;
     //LayoutAssumptions entryAndFinalLayouts;
@@ -2179,6 +2193,7 @@ typedef struct WGPUComputePipelineImpl{
 typedef struct WGPURaytracingPipelineImpl{
     VkPipeline raytracingPipeline;
     VkPipelineLayout layout;
+    uint32_t refCount;
     WGPUBuffer raygenBindingTable;
     WGPUBuffer missBindingTable;
     WGPUBuffer hitBindingTable;
@@ -2343,6 +2358,7 @@ typedef struct WGPURaytracingPassEncoderImpl{
     refcount_type refCount;
     VkPipelineLayout lastLayout;
     WGPUCommandEncoder cmdEncoder;
+    WGPUBindGroup bindGroups[8];
 }WGPURaytracingPassEncoderImpl;
 
 typedef enum SurfaceImplType{

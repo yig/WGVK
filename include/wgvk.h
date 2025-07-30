@@ -950,6 +950,12 @@ typedef struct WGPUComputePassDescriptor {
     WGPU_NULLABLE WGPUPassTimestampWrites const * timestampWrites;
 } WGPUComputePassDescriptor WGPU_STRUCTURE_ATTRIBUTE;
 
+typedef struct WGPURayTracingPassDescriptor{
+    WGPURayTracingShaderBindingTable shaderBindingTable;
+    uint32_t maxRecursionDepth;
+    uint32_t maxPayloadSize;
+}WGPURayTracingPassDescriptor;
+
 typedef struct WGPUTexelCopyBufferInfo {
     WGPUTexelCopyBufferLayout layout;
     WGPUBuffer buffer;
@@ -1747,9 +1753,29 @@ typedef struct WGPURayTracingAccelerationContainerDescriptor{
     WGPURayTracingAccelerationContainerLevel level;
     uint32_t geometryCount;
     uint32_t instanceCount;
-    WGPURayTracingAccelerationGeometryDescriptor* geometries;
-    WGPURayTracingAccelerationInstanceDescriptor* instances;
+    const WGPURayTracingAccelerationGeometryDescriptor* geometries;
+    const WGPURayTracingAccelerationInstanceDescriptor* instances;
 }WGPURayTracingAccelerationContainerDescriptor;
+
+typedef struct WGPURayTracingShaderBindingTableStageDescriptor{
+    WGPUShaderStage	stage;
+    WGPUShaderModule module;
+}WGPURayTracingShaderBindingTableStageDescriptor;
+
+typedef struct WGPURayTracingShaderBindingTableGroupDescriptor{
+    WGPURayTracingShaderBindingTableGroupType type;
+    uint32_t generalIndex;
+    uint32_t closestHitIndex;
+    uint32_t anyHitIndex;
+    uint32_t intersectionIndex;
+}WGPURayTracingShaderBindingTableGroupDescriptor;
+
+typedef struct WGPURayTracingShaderBindingTableDescriptor{
+    uint32_t stageCount;
+    const WGPURayTracingShaderBindingTableStageDescriptor* stages;
+    uint32_t groupCount;
+    const WGPURayTracingShaderBindingTableGroupDescriptor* groups;
+}WGPURayTracingShaderBindingTableDescriptor;
 
 #ifdef __cplusplus
 extern "C"{
@@ -1830,9 +1856,11 @@ void wgpuRenderPassEncoderSetScissorRect             (WGPURenderPassEncoder rend
 
 void wgpuComputePassEncoderSetPipeline        (WGPUComputePassEncoder cpe, WGPUComputePipeline computePipeline);
 void wgpuComputePassEncoderSetBindGroup       (WGPUComputePassEncoder cpe, uint32_t groupIndex, WGPUBindGroup group, size_t dynamicOffsetCount, uint32_t const* dynamicOffsets);
+
+
 void wgpuRaytracingPassEncoderSetPipeline     (WGPURaytracingPassEncoder cpe, WGPURaytracingPipeline raytracingPipeline);
-void wgpuRaytracingPassEncoderSetBindGroup    (WGPURaytracingPassEncoder cpe, uint32_t groupIndex, WGPUBindGroup bindGroup);
-void wgpuRaytracingPassEncoderTraceRays       (WGPURaytracingPassEncoder cpe, uint32_t width, uint32_t height, uint32_t depth);
+void wgpuRaytracingPassEncoderSetBindGroup    (WGPURaytracingPassEncoder cpe, uint32_t groupIndex, WGPUBindGroup bindGroup, uint32_t dynamicOffsetCount, const uint32_t* dynamicOffsets);
+void wgpuRaytracingPassEncoderTraceRays       (WGPURaytracingPassEncoder cpe,  uint32_t rayGenerationOffset, uint32_t rayHitOffset, uint32_t rayMissOffset, uint32_t width, uint32_t height, uint32_t depth);
 
 void wgpuComputePassEncoderDispatchWorkgroups (WGPUComputePassEncoder cpe, uint32_t x, uint32_t y, uint32_t z);
 void wgpuComputePassEncoderRelease            (WGPUComputePassEncoder cpenc);
@@ -1840,7 +1868,7 @@ void wgpuComputePassEncoderRelease            (WGPUComputePassEncoder cpenc);
 void wgpuSurfaceGetCurrentTexture             (WGPUSurface surface, WGPUSurfaceTexture * surfaceTexture);
 void wgpuSurfacePresent                       (WGPUSurface surface);
 
-WGPURaytracingPassEncoder wgpuCommandEncoderBeginRaytracingPass(WGPUCommandEncoder enc);
+WGPURaytracingPassEncoder wgpuCommandEncoderBeginRaytracingPass(WGPUCommandEncoder enc, const WGPURayTracingPassDescriptor* rtDesc);
 WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder enc, const WGPUComputePassDescriptor* cpdesc);
 void wgpuComputePassEncoderEnd(WGPUComputePassEncoder commandEncoder);
 void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder);
