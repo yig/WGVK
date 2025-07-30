@@ -1,4 +1,5 @@
 #include "common.h"
+#include "wgvk.h"
 #include <stdlib.h>
 #include <math.h>
 
@@ -73,4 +74,15 @@ int main(){
         WGPUCommandBuffer cbuf = wgpuCommandEncoderFinish(enc, NULL);
         wgpuQueueSubmit(base.queue, 1, &cbuf);
     }
+    WGPUShaderSourceGLSL glslSource = {
+        .chain.sType = WGPUSType_ShaderSourceGLSL,
+        .code = STRVIEW(R"(
+            Piss shit
+        )"),
+        .stage = WGPUShaderStage_Vertex
+    };
+    WGPUShaderModuleDescriptor vertexMD = {
+        .nextInChain = &glslSource.chain
+    };
+    wgpuDeviceCreateShaderModule(base.device, &vertexMD);
 }

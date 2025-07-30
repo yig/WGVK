@@ -198,6 +198,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 NULL,
                 &ret->surface
             );
+            ret->surfaceType = SurfaceImplType_MetalLayer;
         }break;
         #endif
         #if SUPPORT_WIN32_SURFACE == 1
@@ -215,6 +216,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 NULL,
                 &ret->surface
             );
+            ret->surfaceType = SurfaceImplType_WindowsHWND;
         }break;
         #endif
         #if SUPPORT_XLIB_SURFACE == 1
@@ -234,6 +236,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 NULL,
                 &ret->surface
             );
+            ret->surfaceType = SurfaceImplType_XlibWindow;
         }break;
         #endif
         #if SUPPORT_WAYLAND_SURFACE == 1
@@ -252,6 +255,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 NULL,
                 &ret->surface
             );
+            ret->surfaceType = SurfaceImplType_WaylandSurface;
         }break;
         #endif
         #if SUPPORT_ANDROID_SURFACE == 1
@@ -267,6 +271,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 NULL,
                 &ret->surface
             );
+            ret->surfaceType = SurfaceImplType_AndroidNativeWindow;
         }break;
         #endif
         #if SUPPORT_XCB_SURFACE == 1
@@ -283,6 +288,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 NULL,
                 &ret->surface
             );
+            ret->surfaceType = SurfaceImplType_XCBWindow;
         }break;
         #endif
         default:{

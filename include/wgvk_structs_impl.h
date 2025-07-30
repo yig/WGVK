@@ -2345,11 +2345,23 @@ typedef struct WGPURaytracingPassEncoderImpl{
     WGPUCommandEncoder cmdEncoder;
 }WGPURaytracingPassEncoderImpl;
 
+typedef enum SurfaceImplType{
+    SurfaceImplType_Undefined = 0,
+    SurfaceImplType_MetalLayer,
+    SurfaceImplType_WindowsHWND,
+    SurfaceImplType_XlibWindow,
+    SurfaceImplType_WaylandSurface,
+    SurfaceImplType_AndroidNativeWindow,
+    SurfaceImplType_XCBWindow,
+    SurfaceImplType_Force32 = 0x7FFFFFFF,
+}SurfaceImplType;
+
 typedef struct WGPUSurfaceImpl{
+    
     VkSurfaceKHR surface;
     refcount_type refCount;
     WGPUDevice device;
-
+    SurfaceImplType surfaceType;
     WGPUSurfaceConfiguration lastConfig;
     uint32_t formatCount;
     uint32_t wgpuFormatCount;
