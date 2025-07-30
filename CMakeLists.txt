@@ -71,31 +71,16 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-DNDEBUG -g3 -O3")
 
 # We define a variable to hold the name of the main library target.
 # This avoids repeating `if/else` logic for setting properties.
-if(WGVK_BUILD_GLSL_SUPPORT)
-  if(NOT TARGET glslang)
-    set(ENABLE_OPT OFF)
-    FetchContent_Declare(
-      glslang
-      URL https://github.com/KhronosGroup/glslang/archive/refs/tags/15.4.0.tar.gz
-      DOWNLOAD_EXTRACT_TIMESTAMP True
-    )
-    FetchContent_MakeAvailable(glslang)
-  endif()
-  add_library(glslang_c_api STATIC "${CMAKE_CURRENT_LIST_DIR}/src/glslang_c_api.cpp")
-  target_link_libraries(glslang_c_api PUBLIC glslang)
-  target_include_directories(glslang_c_api PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
+if(WGVK_BUILD_GLSL_SUPPORT OR WGVK_BUILD_WGSL_SUPPORT)
   set(WGVK_PRIMARY_TARGET_NAME "wgvk_core")
-  add_library(${WGVK_PRIMARY_TARGET_NAME} STATIC ${WGVK_CORE_SRC_LIST})
-
-  target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_GLSL=1)
+else()
+  set(WGVK_PRIMARY_TARGET_NAME "wgvk")
 endif()
-set(WGVK_PRIMARY_TARGET_NAME "")
-if(WGVK_BUILD_WGSL_SUPPORT)
-  set(WGVK_PRIMARY_TARGET_NAME "wgvk_core")
-
   add_library(${WGVK_PRIMARY_TARGET_NAME} STATIC ${WGVK_CORE_SRC_LIST})
-  # Add all properties as PUBLIC. This means they are used to build wgvk_core itself,
-  # and they are part of its public interface to be inherited by consumers.
+set(BUNDLE_LIST "")
+
+if(WGVK_BUILD_WGSL_SUPPORT)
+  
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 SUPPORT_WGSL=1 WGVK_DISABLE_ASSERT=1)
   #if(NOT EMSCRIPTEN)
   target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
@@ -136,22 +121,30 @@ if(WGVK_BUILD_WGSL_SUPPORT)
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_WGSL=1)
   
   # Bundle wgvk_core and its dependencies into the final `wgvk` library.
-  wgvk_bundle_libraries(wgvk ${WGVK_PRIMARY_TARGET_NAME} tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api)
-  if(BUILD_SHARED_LIBS)
-    target_link_libraries(wgvk INTERFACE ${WGVK_PRIMARY_TARGET_NAME})
-    target_link_libraries(wgvk PUBLIC tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api absl_strings)
-  else()
-    target_link_libraries(wgvk INTERFACE ${WGVK_PRIMARY_TARGET_NAME}) 
+  list(APPEND BUNDLE_LIST ${WGVK_PRIMARY_TARGET_NAME} tint_lang_wgsl_reader tint_lang_spirv_writer tint_lang_wgsl_inspector tint_c_api)
+endif()
+
+if(WGVK_BUILD_GLSL_SUPPORT)
+  if(NOT TARGET glslang)
+    set(ENABLE_OPT OFF)
+    FetchContent_Declare(
+      glslang
+      URL https://github.com/KhronosGroup/glslang/archive/refs/tags/15.4.0.tar.gz
+      DOWNLOAD_EXTRACT_TIMESTAMP True
+    )
+    FetchContent_MakeAvailable(glslang)
   endif()
+  add_library(glslang_c_api STATIC "${CMAKE_CURRENT_LIST_DIR}/src/glslang_c_api.cpp")
+  target_link_libraries(glslang_c_api PUBLIC glslang)
+  target_include_directories(glslang_c_api PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
 
-else()
-  set(WGVK_PRIMARY_TARGET_NAME "wgvk")
+  target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_GLSL=1)
+  list(APPEND BUNDLE_LIST ${WGVK_PRIMARY_TARGET_NAME} glslang glslang_c_api)
+endif()
 
-  add_library(${WGVK_PRIMARY_TARGET_NAME} ${WGVK_CORE_SRC_LIST})
-  # When not bundling, `wgvk` is the primary target. We use PUBLIC so that
-  # any consumers (like the examples) inherit these properties correctly.
-  target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 WGVK_DISABLE_ASSERT=1)
-  target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC include)
+if(WGVK_BUILD_GLSL_SUPPORT OR WGVK_BUILD_WGSL_SUPPORT)
+  wgvk_bundle_libraries(wgvk ${WGVK_PRIMARY_TARGET_NAME} ${BUNDLE_LIST})
+  target_link_libraries(wgvk INTERFACE ${WGVK_PRIMARY_TARGET_NAME})
 endif()
 if(BUILD_SHARED_LIBS)
   set_target_properties(wgvk_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -166,6 +159,7 @@ if(WGVK_USE_VMA)
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC USE_VMA_ALLOCATOR=1)
 endif()
 
+target_include_directories(${WGVK_PRIMARY_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_LIST_DIR}/include)
 # Platform-specific surface support
 if(WIN32)
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_WIN32_SURFACE=1)
@@ -207,12 +201,14 @@ if(WGVK_BUILD_EXAMPLES)
   add_executable(basic_compute "examples/basic_compute.c")
   #add_executable(rgfw_surface "examples/rgfw_surface.c")
   add_executable(basic_wgsl_shader "examples/basic_wgsl_shader.c")
+  add_executable(basic_glsl_shader "examples/basic_glsl_shader.c")
   add_executable(raytracing "examples/raytracing.c")
   
   # Examples always link against the final `wgvk` target. Thanks to the fix above,
   # they will now correctly inherit all necessary compile definitions.
   target_link_libraries(glfw_surface PUBLIC wgvk glfw)
   target_link_libraries(basic_wgsl_shader PUBLIC wgvk glfw m)
+  target_link_libraries(basic_glsl_shader PUBLIC wgvk glfw m)
   target_link_libraries(raytracing PUBLIC wgvk glfw)
   target_link_libraries(basic_compute PUBLIC wgvk)
   #target_link_libraries(rgfw_surface PUBLIC wgvk Xrandr)

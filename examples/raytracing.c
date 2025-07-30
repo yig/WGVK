@@ -76,8 +76,7 @@ int main(){
     }
     WGPUShaderSourceGLSL glslSource = {
         .chain.sType = WGPUSType_ShaderSourceGLSL,
-        .code = STRVIEW(R"(
-            Piss shit
+        .code = STRVIEW(R"(#version 450
         )"),
         .stage = WGPUShaderStage_Vertex
     };

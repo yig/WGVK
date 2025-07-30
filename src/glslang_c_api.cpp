@@ -2,8 +2,42 @@
 #include <glslang/Public/ShaderLang.h>
 #include <glslang_c_api.h>
 #include <webgpu/webgpu.h>
-
 const extern TBuiltInResource DefaultTBuiltInResource_RG;
+static EShLanguage wgpuShaderStageToGlslang(WGPUShaderStage stage){
+    if(stage == WGPUShaderStage_Vertex) return EShLangVertex;
+    if(stage == WGPUShaderStage_TessControl) return EShLangTessControl;
+    if(stage == WGPUShaderStage_TessEvaluation) return EShLangTessEvaluation;
+    if(stage == WGPUShaderStage_Geometry) return EShLangGeometry;
+    if(stage == WGPUShaderStage_Fragment) return EShLangFragment;
+    if(stage == WGPUShaderStage_Compute) return EShLangCompute;
+    if(stage == WGPUShaderStage_RayGen) return EShLangRayGen;
+    if(stage == WGPUShaderStage_Intersect) return EShLangIntersect;
+    if(stage == WGPUShaderStage_AnyHit) return EShLangAnyHit;
+    if(stage == WGPUShaderStage_ClosestHit) return EShLangClosestHit;
+    if(stage == WGPUShaderStage_Miss) return EShLangMiss;
+    if(stage == WGPUShaderStage_Callable) return EShLangCallable;
+    if(stage == WGPUShaderStage_Task) return EShLangTask;
+    if(stage == WGPUShaderStage_Mesh) return EShLangMesh;
+    rg_trap();
+    return (EShLanguage)~0;
+}
+static WGPUShaderStageEnum wgpuShaderStageToEnum(WGPUShaderStage stage){
+    if(stage == WGPUShaderStage_Vertex) return WGPUShaderStageEnum_Vertex;
+    if(stage == WGPUShaderStage_TessControl) return WGPUShaderStageEnum_TessControl;
+    if(stage == WGPUShaderStage_TessEvaluation) return WGPUShaderStageEnum_TessEvaluation;
+    if(stage == WGPUShaderStage_Geometry) return WGPUShaderStageEnum_Geometry;
+    if(stage == WGPUShaderStage_Fragment) return WGPUShaderStageEnum_Fragment;
+    if(stage == WGPUShaderStage_Compute) return WGPUShaderStageEnum_Compute;
+    if(stage == WGPUShaderStage_RayGen) return WGPUShaderStageEnum_RayGen;
+    if(stage == WGPUShaderStage_Intersect) return WGPUShaderStageEnum_Intersect;
+    if(stage == WGPUShaderStage_AnyHit) return WGPUShaderStageEnum_AnyHit;
+    if(stage == WGPUShaderStage_ClosestHit) return WGPUShaderStageEnum_ClosestHit;
+    if(stage == WGPUShaderStage_Miss) return WGPUShaderStageEnum_Miss;
+    if(stage == WGPUShaderStage_Callable) return WGPUShaderStageEnum_Callable;
+    if(stage == WGPUShaderStage_Task) return WGPUShaderStageEnum_Task;
+    if(stage == WGPUShaderStage_Mesh) return WGPUShaderStageEnum_Mesh;
+    return (WGPUShaderStageEnum)~0;
+}
 std::vector<uint32_t> glsl_to_spirv_single(WGPUStringView source, EShLanguage stage, glslang::EShTargetClientVersion targetVulkanVersion, glslang::EShTargetLanguageVersion targetSpirvVersion){
     
     glslang::TShader shader(stage);
@@ -41,6 +75,7 @@ std::vector<uint32_t> glsl_to_spirv_single(WGPUStringView source, EShLanguage st
             default: return "??unknown ShaderStage??";
         }
     };
+
     TBuiltInResource Resources = DefaultTBuiltInResource_RG;
     Resources.maxComputeWorkGroupSizeX = 1024;
     Resources.maxComputeWorkGroupSizeY = 1024;
@@ -56,12 +91,14 @@ std::vector<uint32_t> glsl_to_spirv_single(WGPUStringView source, EShLanguage st
     
     if(!shader.parse(&Resources, targetVulkanVersion, ECoreProfile, false, false, messages)){
         snprintf(errorBuffer, sizeof(errorBuffer) - 1, "%s GLSL Parsing Failed: %s", stageToString(stage), shader.getInfoLog());
+        puts(errorBuffer);
     }
     else{
         glslang::TProgram program;
         program.addShader(&shader);
         if(!program.link(messages)){
             snprintf(errorBuffer, sizeof(errorBuffer) - 1, "Error linkin shader: %s", program.getInfoLog());
+            puts(errorBuffer);
         }
         glslang::TIntermediate* intermediate = program.getIntermediate(stage);
         std::vector<uint32_t> output;
@@ -71,11 +108,41 @@ std::vector<uint32_t> glsl_to_spirv_single(WGPUStringView source, EShLanguage st
         }
         return output;
     }
-    
+    return std::vector<uint32_t>{};
 }
 
 WGPUShaderModule wgpuDeviceCreateShaderModuleGLSL(WGPUDevice device, const WGPUShaderModuleDescriptor* shDesc){
-
+    glslang::InitializeProcess();
+    wgvk_assert(shDesc->nextInChain->sType == WGPUSType_ShaderSourceGLSL, "nextInChain->sType must be WGPUSType_ShaderSourceGLSL");
+    WGPUShaderSourceGLSL* source = (WGPUShaderSourceGLSL*)shDesc->nextInChain;
+    std::vector<uint32_t> spirvSource = glsl_to_spirv_single(source->code, wgpuShaderStageToGlslang(source->stage), glslang::EShTargetVulkan_1_4, glslang::EShTargetSpv_1_4);
+    WGPUShaderModule shadermodule = (WGPUShaderModuleImpl*)RL_CALLOC(1, sizeof(WGPUShaderModuleImpl));
+    WGPUShaderSourceGLSL* copy = (WGPUShaderSourceGLSL*)RL_CALLOC(1, sizeof(WGPUShaderSourceGLSL));
+    copy->chain.sType = source->chain.sType;
+    copy->stage = source->stage;
+    size_t length = wgpuStrlen(source->code);
+    copy->code.data = (char*)std::malloc(length + 1);
+    std::memcpy(const_cast<char*>(copy->code.data), source->code.data, length);
+    const_cast<char*>(copy->code.data)[length] = '\0';
+    copy->code.length = WGPU_STRLEN;
+    shadermodule->source = (WGPUChainedStruct*)copy;
+    shadermodule->device = device;
+    shadermodule->refCount = 1;
+    VkShaderModule vkModule = VK_NULL_HANDLE;
+    VkShaderModuleCreateInfo sci = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = spirvSource.size() * sizeof(uint32_t),
+        .pCode = spirvSource.data(),
+    };
+    VkResult createResult = device->functions.vkCreateShaderModule(device->device, &sci, nullptr, &vkModule);
+    if(createResult != VK_SUCCESS){
+        std::free(const_cast<char*>(copy->code.data));
+        std::free(copy);
+        std::free(shadermodule);
+        return nullptr;
+    }
+    shadermodule->modules[wgpuShaderStageToEnum(source->stage)].module = vkModule;
+    return shadermodule;
 }
 
 const TBuiltInResource DefaultTBuiltInResource_RG = {

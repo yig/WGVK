@@ -93,8 +93,12 @@
 #define Font rlFont
 #define Matrix rlMatrix
 #include <wgvk_structs_impl.h>
+
 #if SUPPORT_WGSL == 1
-#include <tint_c_api.h>
+    #include <tint_c_api.h>
+#endif
+#if SUPPORT_GLSL == 1
+    #include <glslang_c_api.h>
 #endif
 
 #ifndef STRVIEW
@@ -1329,6 +1333,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     
     vmaCreatePool(retDevice->allocator, &vpci, &retDevice->aligned_hostVisiblePool);
     #endif
+    
     wgvkAllocator_init(&retDevice->builtinAllocator, adapter->physicalDevice, retDevice, &retDevice->functions);
 
     
@@ -2189,6 +2194,11 @@ WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device, const WGPUShade
             ret->source = (WGPUChainedStruct*)depot;
             return ret;
         }
+        #endif
+        #if SUPPORT_GLSL == 1
+        case WGPUSType_ShaderSourceGLSL: {
+            return wgpuDeviceCreateShaderModuleGLSL(device, descriptor);
+        }break;
         #endif
         default: {
             RL_FREE(ret);

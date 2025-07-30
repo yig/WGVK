@@ -17,7 +17,11 @@ typedef struct tc_SpirvBlob{
     tc_spirvSingleEntrypoint entryPoints[16];
 }tc_SpirvBlob;
 #endif
-
-WGPUShaderModule wgpuDeviceCreateShaderModuleGLSL(WGPUDevice device, const WGPUShaderModuleDescriptor* shDesc);
-
+#ifdef __cplusplus
+extern "C"{
+#endif
+    WGPUShaderModule wgpuDeviceCreateShaderModuleGLSL(WGPUDevice device, const WGPUShaderModuleDescriptor* shDesc);
+#ifdef __cplusplus
+}
+#endif
 #endif
