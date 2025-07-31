@@ -1757,6 +1757,17 @@ typedef struct WGPURayTracingAccelerationContainerDescriptor{
     const WGPURayTracingAccelerationInstanceDescriptor* instances;
 }WGPURayTracingAccelerationContainerDescriptor;
 
+typedef struct WGPURayTracingStateDescriptor{
+    WGPURayTracingShaderBindingTable shaderBindingTable;
+    uint32_t maxRecursionDepth;
+    uint32_t maxPayloadSize;
+}WGPURayTracingStateDescriptor;
+
+typedef struct WGPURayTracingPipelineDescriptor{
+    WGPUPipelineLayout layout;
+    WGPURayTracingStateDescriptor rayTracingState;
+}WGPURayTracingPipelineDescriptor;
+
 typedef struct WGPURayTracingShaderBindingTableStageDescriptor{
     WGPUShaderStage	stage;
     WGPUShaderModule module;
@@ -2028,6 +2039,7 @@ WGPU_EXPORT void wgpuTextureViewSetLabel(WGPUTextureView textureView, WGPUString
 
 
 WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContainer(WGPUDevice device, const WGPURayTracingAccelerationContainerDescriptor* descriptor);
+WGPURaytracingPipeline wgpuDeviceCreateRayTracingPipeline(WGPUDevice device, const WGPURayTracingPipelineDescriptor* descriptor);
 
 
 void wgpuInstanceAddRef                       (WGPUInstance instance);

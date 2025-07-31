@@ -1538,7 +1538,6 @@ typedef struct RenderPassCommandGeneric {
         ComputePassCommandDispatchWorkgroups dispatchWorkgroups;
         ComputePassCommandDispatchWorkgroupsIndirect dispatchWorkgroupsIndirect;
         RaytracingPassCommandTraceRays traceRays;
-        
     };
 }RenderPassCommandGeneric;
 
@@ -1932,6 +1931,11 @@ typedef struct WGPUBufferImpl{
     refcount_type refCount;
     WGPUFence latestFence;
 }WGPUBufferImpl;
+
+typedef struct WGPURayTracingShaderBindingTableImpl{
+    VkShaderGroupShaderKHR shaderGroup;
+    WGPUDevice device;
+}WGPURayTracingShaderBindingTableImpl;
 
 typedef struct WGPURayTracingAccelerationContainerImpl{
     VkAccelerationStructureKHR accelerationStructure;
@@ -2359,10 +2363,10 @@ typedef struct WGPURaytracingPassEncoderImpl{
     VkCommandBuffer cmdBuffer;
     WGPUDevice device;
     WGPURaytracingPipeline lastPipeline;
-
+    RenderPassCommandGenericVector bufferedCommands;
     ResourceUsage resourceUsage;
     refcount_type refCount;
-    VkPipelineLayout lastLayout;
+    WGPUPipelineLayout lastLayout;
     WGPUCommandEncoder cmdEncoder;
     WGPUBindGroup bindGroups[8];
 }WGPURaytracingPassEncoderImpl;

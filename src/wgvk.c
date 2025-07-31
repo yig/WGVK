@@ -4871,6 +4871,7 @@ void RenderPassEncoder_PushCommand(WGPURenderPassEncoder encoder, const RenderPa
     }
     RenderPassCommandGenericVector_push_back(&encoder->bufferedCommands, *cmd);
 }
+
 void ComputePassEncoder_PushCommand(WGPUComputePassEncoder encoder, const RenderPassCommandGeneric* cmd){
     if(cmd->type == cp_command_type_set_compute_pipeline){
         encoder->lastLayout = cmd->setComputePipeline.pipeline->layout;
@@ -4878,6 +4879,12 @@ void ComputePassEncoder_PushCommand(WGPUComputePassEncoder encoder, const Render
     RenderPassCommandGenericVector_push_back(&encoder->bufferedCommands, *cmd);
 }
 
+void RaytracingPassEncoder_PushCommand(WGPURaytracingPassEncoder encoder, const RenderPassCommandGeneric* cmd){
+    if(cmd->type == rp_command_type_set_raytracing_pipeline){
+        encoder->lastLayout = cmd->setRaytracingPipeline.pipeline->layout;
+    }
+    RenderPassCommandGenericVector_push_back(&encoder->bufferedCommands, *cmd);
+}
 
 
 // Implementation of RenderpassEncoderDraw
@@ -7478,6 +7485,20 @@ WGPUBottomLevelAccelerationStructure wgpuDeviceCreateBottomLevelAccelerationStru
 
 //DEFINE_VECTOR(static inline, VkAccelerationStructureBuildGeometryInfoKHR, VkAccelerationStructureBuildGeometryInfoKHRVector)
 
+
+WGPURayTracingShaderBindingTable wgpuDeviceCreateRayTracingShaderBindingTable(WGPUDevice device, const WGPURayTracingShaderBindingTableDescriptor* descriptor){
+    WGPURayTracingShaderBindingTable ret = RL_CALLOC(1, sizeof(WGPURayTracingShaderBindingTableImpl));
+    for(uint32_t i = 0;i < descriptor->groupCount;i++){
+        //descriptor->stages[i].
+    }
+    VkRayTracingShaderGroupCreateInfoKHR createInfo = {
+        .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+    };
+    return NULL;
+}
+
+
+
 WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContainer(WGPUDevice device, const WGPURayTracingAccelerationContainerDescriptor* descriptor){
     WGPURayTracingAccelerationContainer ret = RL_CALLOC(1, sizeof(WGPURayTracingAccelerationContainerImpl));
     ret->level = descriptor->level;
@@ -7489,7 +7510,7 @@ WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContai
     uint32_t* maxPrimitiveCounts = ret->primitiveCounts;
 
     VkAabbPositionsKHR dummy = {0};
-    // Use a dynamic array (or VLA if your compiler supports it)
+
     VkAccelerationStructureGeometryKHR* geometries = RL_CALLOC(geometryCount + descriptor->instanceCount, sizeof(VkAccelerationStructureGeometryKHR));
 
     
@@ -7741,8 +7762,20 @@ void wgpuRaytracingPassEncoderSetBindGroup    (WGPURaytracingPassEncoder cpe, ui
     cpe->bindGroups[groupIndex] = bindGroup;
     //ru_trackBindGroup(&cpe->resourceUsage, bindGroup);
 }
-void wgpuRaytracingPassEncoderTraceRays       (WGPURaytracingPassEncoder cpe, uint32_t rayGenerationOffset, uint32_t rayHitOffset, uint32_t rayMissOffset, uint32_t width, uint32_t height, uint32_t depth){
 
+void wgpuRaytracingPassEncoderTraceRays       (WGPURaytracingPassEncoder cpe, uint32_t rayGenerationOffset, uint32_t rayHitOffset, uint32_t rayMissOffset, uint32_t width, uint32_t height, uint32_t depth){
+    RenderPassCommandGeneric command = {
+        .type = rt_command_type_trace_rays,
+        .traceRays = {
+            .rayGenerationOffset = rayGenerationOffset,
+            .rayHitOffset = rayHitOffset,
+            .rayMissOffset = rayMissOffset,
+            .width = width,
+            .height = height,
+            .depth = depth,
+        }
+    };
+    RaytracingPassEncoder_PushCommand(cpe, &command);
 }
 
 
