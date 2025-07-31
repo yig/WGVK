@@ -3115,6 +3115,26 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
             destination_->lastLayout = setRenderPipeline->pipeline->layout->layout;
         }
         break;
+        case rp_command_type_set_raytracing_pipeline: {
+            const RenderPassCommandSetRaytracingPipeline* setRaytracingPipeline = &command->setRaytracingPipeline;
+            device->functions.vkCmdBindPipeline(
+                destination,
+                VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                setRaytracingPipeline->pipeline->raytracingPipeline
+            );
+            destination_->lastLayout = setRaytracingPipeline->pipeline->layout->layout;
+        }
+        break;
+        case rt_command_type_trace_rays: {
+            const RaytracingPassCommandTraceRays* traceRays = &command->traceRays;
+            
+            //device->functions.vkCmdTraceRaysKHR(
+            //    destination,
+            //    traceRays->
+            //    setRenderPipeline->pipeline->renderPipeline
+            //);
+        }
+        break;
         case rp_command_type_execute_renderbundle:{
             const RenderPassCommandExecuteRenderbundles* executeRenderBundles = &command->executeRenderBundles;
             WGPURenderBundle bundle = executeRenderBundles->renderBundle;

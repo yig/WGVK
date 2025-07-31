@@ -140,6 +140,12 @@ if(WGVK_BUILD_GLSL_SUPPORT)
 
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_GLSL=1)
   list(APPEND BUNDLE_LIST ${WGVK_PRIMARY_TARGET_NAME} glslang glslang_c_api)
+  target_compile_options(glslang_c_api PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-fno-rtti>
+    $<$<CXX_COMPILER_ID:Clang>:-fno-rtti>
+    $<$<CXX_COMPILER_ID:AppleClang>:-fno-rtti>
+    $<$<CXX_COMPILER_ID:MSVC>:/GR->  # disable RTTI in MSVC
+  )
 endif()
 
 if(WGVK_BUILD_GLSL_SUPPORT OR WGVK_BUILD_WGSL_SUPPORT)

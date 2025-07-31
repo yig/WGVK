@@ -1360,6 +1360,7 @@ typedef enum RCPassCommandType{
     rp_command_type_set_render_pipeline,
     rp_command_type_execute_renderbundle,
     cp_command_type_set_compute_pipeline,
+    rp_command_type_set_raytracing_pipeline,
     cp_command_type_dispatch_workgroups,
     cp_command_type_dispatch_workgroups_indirect,
     rp_command_type_begin_occlusion_query,
@@ -1410,6 +1411,10 @@ typedef struct RenderPassCommandSetIndexBuffer {
 typedef struct RenderPassCommandSetPipeline {
     WGPURenderPipeline pipeline;
 } RenderPassCommandSetPipeline;
+
+typedef struct RenderPassCommandSetRaytracingPipeline{
+    WGPURaytracingPipeline pipeline;
+}RenderPassCommandSetRaytracingPipeline;
 
 typedef struct RenderPassCommandExecuteRenderbundles{
     WGPURenderBundle renderBundle;
@@ -1522,6 +1527,7 @@ typedef struct RenderPassCommandGeneric {
         RenderPassCommandSetIndexBuffer setIndexBuffer;
         RenderPassCommandSetBindGroup setBindGroup;
         RenderPassCommandSetPipeline setRenderPipeline;
+        RenderPassCommandSetRaytracingPipeline setRaytracingPipeline;
         RenderPassCommandExecuteRenderbundles executeRenderBundles;
         RenderPassCommandMultiDrawIndexedIndirect multiDrawIndexedIndirect;
         RenderPassCommandBeginOcclusionQuery beginOcclusionQuery;
@@ -2192,7 +2198,7 @@ typedef struct WGPUComputePipelineImpl{
 
 typedef struct WGPURaytracingPipelineImpl{
     VkPipeline raytracingPipeline;
-    VkPipelineLayout layout;
+    WGPUPipelineLayout layout;
     uint32_t refCount;
     WGPUBuffer raygenBindingTable;
     WGPUBuffer missBindingTable;

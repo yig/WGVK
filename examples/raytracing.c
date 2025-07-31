@@ -4,7 +4,7 @@
 #include <math.h>
 
 #define vertexFloatCount 9
-WGPUShaderModule compileGLSLModule(const char* source){
+WGPUShaderModule compileGLSLModule(WGPUDevice device, const char* source){
     WGPUShaderSourceGLSL glslSource = {
     .chain.sType = WGPUSType_ShaderSourceGLSL,
         .code = {
@@ -16,7 +16,7 @@ WGPUShaderModule compileGLSLModule(const char* source){
     WGPUShaderModuleDescriptor vertexMD = {
         .nextInChain = &glslSource.chain
     };
-    wgpuDeviceCreateShaderModule(base.device, &vertexMD);
+    return wgpuDeviceCreateShaderModule(device, &vertexMD);
 }
 
 int main(){
