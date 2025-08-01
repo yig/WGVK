@@ -24,6 +24,7 @@
  * SOFTWARE.
  */
 
+#include "wgvk_config.h"
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan_core.h"
 #define VOLK_IMPLEMENTATION
@@ -982,7 +983,7 @@ static inline VkPhysicalDeviceType tvkpdt(WGPUAdapterType atype){
 //    }
 //    return (VkPhysicalDeviceType)-1;
 //}
-void wgpuCreateAdapter_impl(void* userdata_v){
+void wgpuCreateAdapter_sync(void* userdata_v){
     userdataforcreateadapter* userdata = (userdataforcreateadapter*)userdata_v;
     uint32_t physicalDeviceCount;
     vkEnumeratePhysicalDevices(userdata->instance->instance, &physicalDeviceCount, NULL);
@@ -990,7 +991,15 @@ void wgpuCreateAdapter_impl(void* userdata_v){
     VkResult result = vkEnumeratePhysicalDevices(userdata->instance->instance, &physicalDeviceCount, pds);
     if(result != VK_SUCCESS){
         const char res[] = "vkEnumeratePhysicalDevices failed";
-        userdata->info.callback(WGPURequestAdapterStatus_Unavailable, NULL, CLITERAL(WGPUStringView){.data = res,.length = sizeof(res) - 1},userdata->info.userdata1, userdata->info.userdata2);
+        userdata->info.callback(
+            WGPURequestAdapterStatus_Unavailable,
+            NULL, CLITERAL(WGPUStringView){
+                .data = res,
+                .length = sizeof(res) - 1
+            },
+            userdata->info.userdata1,
+            userdata->info.userdata2
+        );
         return;
     }
     uint32_t i = 0;
@@ -1062,7 +1071,7 @@ WGPUFuture wgpuInstanceRequestAdapter(WGPUInstance instance, const WGPURequestAd
     info->info = callbackInfo;
     WGPUFutureImpl ret = {
         .userdataForFunction = info,
-        .functionCalledOnWaitAny = wgpuCreateAdapter_impl,
+        .functionCalledOnWaitAny = wgpuCreateAdapter_sync,
         .freeUserData = RL_FREE
     };
 
@@ -1183,6 +1192,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
         }
     }
     // Specify device features
+    
 
     VkPhysicalDeviceBufferDeviceAddressFeaturesKHR deviceFeaturesAddressKhr = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR,
@@ -1206,6 +1216,24 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
         .pNext =  &v13features
     };
     vkGetPhysicalDeviceFeatures2(adapter->physicalDevice, &deviceFeatures);
+    if(pipelineFeatures.rayTracingPipeline == VK_TRUE){
+        VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+        VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties = {
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR,
+            &rayTracingPipelineProperties,
+        };
+        VkPhysicalDeviceProperties2 deviceProperties2 = {
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            &accelerationStructureProperties,
+        };
+        vkGetPhysicalDeviceProperties2(adapter->physicalDevice, &deviceProperties2);
+        adapter->rayTracingPipelineProperties = rayTracingPipelineProperties;
+        adapter->accelerationStructureProperties = accelerationStructureProperties;
+    }
+    else{
+        adapter->rayTracingPipelineProperties    = (VkPhysicalDeviceRayTracingPipelinePropertiesKHR){0};
+        adapter->accelerationStructureProperties = (VkPhysicalDeviceAccelerationStructurePropertiesKHR){0};
+    }
 
     VkDeviceCreateInfo createInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -1358,19 +1386,6 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
 
         retDevice->adapter = adapter;
         wgpuAdapterAddRef(adapter);
-        {
-            
-            // Get ray tracing pipeline properties
-            #if VULKAN_ENABLE_RAYTRACING == 1
-            VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties zeroinit;
-            rayTracingPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
-            VkPhysicalDeviceProperties2 deviceProperties2 zeroinit;
-            deviceProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            deviceProperties2.pNext = &rayTracingPipelineProperties;
-            vkGetPhysicalDeviceProperties2(adapter->physicalDevice, &deviceProperties2);
-            adapter->rayTracingPipelineProperties = rayTracingPipelineProperties;
-            #endif
-        }
         retDevice->adapter = adapter;
         retQueue->device = retDevice;
     }
@@ -3123,16 +3138,76 @@ void recordVkCommand(CommandBufferAndSomeState* destination_, const RenderPassCo
                 setRaytracingPipeline->pipeline->raytracingPipeline
             );
             destination_->lastLayout = setRaytracingPipeline->pipeline->layout->layout;
+            destination_->lastRaytracingPipeline = setRaytracingPipeline->pipeline;
         }
         break;
         case rt_command_type_trace_rays: {
             const RaytracingPassCommandTraceRays* traceRays = &command->traceRays;
+                
+            WGPURaytracingPipeline pipeline = destination_->lastRaytracingPipeline;
+            wgvk_assert(pipeline != NULL, "vkCmdTraceRaysKHR called without a bound ray tracing pipeline.");
+                
+            WGPUBuffer sbtBuffer = pipeline->sbtBuffer;
+            VkDeviceSize totalSbtSize = pipeline->totalSbtSize;
+            wgvk_assert(sbtBuffer != NULL, "Ray tracing pipeline does not have a valid SBT buffer.");
+                
+            // Get properties to calculate the stride between handles.
+            const VkPhysicalDeviceRayTracingPipelinePropertiesKHR* rtProperties = &device->adapter->rayTracingPipelineProperties;
+            const uint32_t handleSize = rtProperties->shaderGroupHandleSize;
+            const uint32_t handleAlignment = rtProperties->shaderGroupBaseAlignment;
+            const VkDeviceSize handleStride = (handleSize + (handleAlignment - 1)) & ~(handleAlignment - 1);
+                
+            const VkDeviceAddress sbtBaseAddress = sbtBuffer->address;
+                
+            // --- Calculate the size of each SBT region based on offsets ---
+                
+            // The size of the ray-gen region is from its start to the start of the miss region.
+            VkDeviceSize rayGenRegionSize = traceRays->rayMissOffset - traceRays->rayGenerationOffset;
+                
+            // The size of the miss region is from its start to the start of the hit region.
+            VkDeviceSize missRegionSize = traceRays->rayHitOffset - traceRays->rayMissOffset;
+                
+            // The size of the hit region is from its start to the end of the entire SBT buffer.
+            VkDeviceSize hitRegionSize = totalSbtSize - traceRays->rayHitOffset;
+                
+                
+            // --- Configure the 4 strided device address regions ---
+                
+            // 1. Ray Generation Shader Binding Table
+            const VkStridedDeviceAddressRegionKHR raygenSbtRegion = {
+                .deviceAddress = sbtBaseAddress + traceRays->rayGenerationOffset,
+                .stride        = handleStride,
+                .size          = rayGenRegionSize
+            };
+        
+            // 2. Miss Shader Binding Table
+            const VkStridedDeviceAddressRegionKHR missSbtRegion = {
+                .deviceAddress = sbtBaseAddress + traceRays->rayMissOffset,
+                .stride        = handleStride,
+                .size          = missRegionSize
+            };
+        
+            // 3. Hit Shader Binding Table
+            const VkStridedDeviceAddressRegionKHR hitSbtRegion = {
+                .deviceAddress = sbtBaseAddress + traceRays->rayHitOffset,
+                .stride        = handleStride,
+                .size          = hitRegionSize
+            };
             
-            //device->functions.vkCmdTraceRaysKHR(
-            //    destination,
-            //    traceRays->
-            //    setRenderPipeline->pipeline->renderPipeline
-            //);
+            // 4. Callable Shader Binding Table (not supported by the locked traceRays signature)
+            const VkStridedDeviceAddressRegionKHR callableSbtRegion = { .deviceAddress = 0, .stride = 0, .size = 0 };
+        
+            // Dispatch the ray tracing command.
+            device->functions.vkCmdTraceRaysKHR(
+                destination,
+                &raygenSbtRegion,
+                &missSbtRegion,
+                &hitSbtRegion,
+                &callableSbtRegion,
+                traceRays->width,
+                traceRays->height,
+                traceRays->depth
+            );
         }
         break;
         case rp_command_type_execute_renderbundle:{
@@ -7484,20 +7559,125 @@ WGPUBottomLevelAccelerationStructure wgpuDeviceCreateBottomLevelAccelerationStru
 */
 
 //DEFINE_VECTOR(static inline, VkAccelerationStructureBuildGeometryInfoKHR, VkAccelerationStructureBuildGeometryInfoKHRVector)
-
-
+static inline VkRayTracingShaderGroupTypeKHR toVulkanShaderGroupType(WGPURayTracingShaderBindingTableGroupType type){
+    switch(type){
+        case WGPURayTracingShaderBindingTableGroupType_General:{
+            return VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        }break;
+        case WGPURayTracingShaderBindingTableGroupType_TrianglesHitGroup:{
+            return VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+        }break;
+        case WGPURayTracingShaderBindingTableGroupType_ProceduralHitGroup:{
+            return VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+        }break;
+        default: rg_unreachable();
+        return (VkRayTracingShaderGroupTypeKHR)~0;
+    }
+}
+static  WGPUShaderStageEnum wgpuShaderStageToEnum(WGPUShaderStage stage){
+    if(stage == WGPUShaderStage_Vertex) return WGPUShaderStageEnum_Vertex;
+    if(stage == WGPUShaderStage_TessControl) return WGPUShaderStageEnum_TessControl;
+    if(stage == WGPUShaderStage_TessEvaluation) return WGPUShaderStageEnum_TessEvaluation;
+    if(stage == WGPUShaderStage_Geometry) return WGPUShaderStageEnum_Geometry;
+    if(stage == WGPUShaderStage_Fragment) return WGPUShaderStageEnum_Fragment;
+    if(stage == WGPUShaderStage_Compute) return WGPUShaderStageEnum_Compute;
+    if(stage == WGPUShaderStage_RayGen) return WGPUShaderStageEnum_RayGen;
+    if(stage == WGPUShaderStage_Intersect) return WGPUShaderStageEnum_Intersect;
+    if(stage == WGPUShaderStage_AnyHit) return WGPUShaderStageEnum_AnyHit;
+    if(stage == WGPUShaderStage_ClosestHit) return WGPUShaderStageEnum_ClosestHit;
+    if(stage == WGPUShaderStage_Miss) return WGPUShaderStageEnum_Miss;
+    if(stage == WGPUShaderStage_Callable) return WGPUShaderStageEnum_Callable;
+    if(stage == WGPUShaderStage_Task) return WGPUShaderStageEnum_Task;
+    if(stage == WGPUShaderStage_Mesh) return WGPUShaderStageEnum_Mesh;
+    return (WGPUShaderStageEnum)~0;
+}
 WGPURayTracingShaderBindingTable wgpuDeviceCreateRayTracingShaderBindingTable(WGPUDevice device, const WGPURayTracingShaderBindingTableDescriptor* descriptor){
     WGPURayTracingShaderBindingTable ret = RL_CALLOC(1, sizeof(WGPURayTracingShaderBindingTableImpl));
+    ret->refCount = 1;
+    ret->shaderGroups = RL_CALLOC(descriptor->groupCount, sizeof(VkRayTracingShaderGroupCreateInfoKHR));
+    ret->shaderGroupCount = descriptor->groupCount;
     for(uint32_t i = 0;i < descriptor->groupCount;i++){
-        //descriptor->stages[i].
+        ret->shaderGroups[i] = CLITERAL(VkRayTracingShaderGroupCreateInfoKHR){
+            .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+            .type = toVulkanShaderGroupType(descriptor->groups[i].type),
+            .generalShader = descriptor->groups[i].generalIndex,
+            .closestHitShader = descriptor->groups[i].closestHitIndex,
+            .anyHitShader = descriptor->groups[i].anyHitIndex,
+            .intersectionShader = descriptor->groups[i].intersectionIndex,
+        };
     }
-    VkRayTracingShaderGroupCreateInfoKHR createInfo = {
-        .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-    };
-    return NULL;
+    ret->shaderStageCount = descriptor->stageCount;
+    ret->shaderStages = RL_CALLOC(descriptor->stageCount, sizeof(VkPipelineShaderStageCreateInfo));
+    for(uint32_t i = 0;i < descriptor->stageCount;i++){
+        ret->shaderStages[i] = CLITERAL(VkPipelineShaderStageCreateInfo){
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = toVulkanShaderStageBits(descriptor->stages[i].stage),
+            .module = descriptor->stages[i].module->modules[wgpuShaderStageToEnum(descriptor->stages[i].stage)].module,
+            .pName = descriptor->stages[i].module->modules[wgpuShaderStageToEnum(descriptor->stages[i].stage)].epName,
+        };
+    }
+    return ret;
 }
 
+WGPURaytracingPipeline wgpuDeviceCreateRayTracingPipeline(WGPUDevice device, const WGPURayTracingPipelineDescriptor* descriptor){
+    // After creating the ray tracing pipeline in wgpuDeviceCreateRayTracingPipeline:
+    WGPURaytracingPipeline ret = RL_CALLOC(1, sizeof(WGPURaytracingPipelineImpl));
+    ret->layout = descriptor->layout;
+    wgpuPipelineLayoutAddRef(ret->layout);
+    VkRayTracingPipelineCreateInfoKHR createInfo = {
+        .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
+        .maxPipelineRayRecursionDepth = descriptor->rayTracingState.maxRecursionDepth,
+        .layout = descriptor->layout->layout,
+        .groupCount = descriptor->rayTracingState.shaderBindingTable->shaderGroupCount,
+        .pGroups    = descriptor->rayTracingState.shaderBindingTable->shaderGroups,
+        .stageCount = descriptor->rayTracingState.shaderBindingTable->shaderStageCount,
+        .pStages    = descriptor->rayTracingState.shaderBindingTable->shaderStages,
+    };
+    device->functions.vkCreateRayTracingPipelinesKHR(device->device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &createInfo, NULL, &ret->raytracingPipeline);
+    
+    const VkPhysicalDeviceRayTracingPipelinePropertiesKHR* rtProperties = &device->adapter->rayTracingPipelineProperties;
+    const uint32_t handleAlignment = rtProperties->shaderGroupBaseAlignment;
+    const uint32_t handleSize = device->adapter->rayTracingPipelineProperties.shaderGroupHandleSize;
+    const uint32_t groupCount = descriptor->rayTracingState.shaderBindingTable->shaderGroupCount;
+    
+    // calloc groupCount * handleSize bytes
+    uint8_t* shaderHandles = (uint8_t*)RL_CALLOC(groupCount, handleSize);
+    uint64_t shaderHandlesSizeInBytes = ((uint64_t)groupCount) * handleSize;
+    // Get the handles
+    VkResult result = device->functions.vkGetRayTracingShaderGroupHandlesKHR(
+        device->device,
+        ret->raytracingPipeline,
+        0,                      // firstGroup
+        groupCount,             // groupCount
+        shaderHandlesSizeInBytes, // dataSize
+        shaderHandles           // pData
+    );
 
+    const VkDeviceSize handleStride = (handleSize + (handleAlignment - 1)) & ~(handleAlignment - 1);
+    const VkDeviceSize sbtTotalSize = groupCount * handleStride;
+    
+    // Store the total size on the pipeline object.
+    ret->totalSbtSize = sbtTotalSize;
+
+    // Still in wgpuDeviceCreateRayTracingPipeline or a new function for the SBT
+    WGPUBufferDescriptor sbtBufferDesc = {
+        .size = shaderHandlesSizeInBytes,
+        .usage = WGPUBufferUsage_Raytracing, // | WGPUBufferUsage_ShaderDeviceAddress
+        .mappedAtCreation = true // Or map it after creation
+    };
+    
+    // This buffer should probably be part of your WGPURaytracingPipelineImpl
+    ret->sbtBuffer = wgpuDeviceCreateBuffer(device, &sbtBufferDesc);
+    
+    // Copy the handles to the mapped buffer
+    void* mappedData = NULL;
+    wgpuBufferGetMappedRange(ret->sbtBuffer, 0, shaderHandlesSizeInBytes);
+    memcpy(mappedData, shaderHandles, shaderHandlesSizeInBytes);
+    wgpuBufferUnmap(ret->sbtBuffer);
+    
+    RL_FREE(shaderHandles);
+    return ret;
+}
 
 WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContainer(WGPUDevice device, const WGPURayTracingAccelerationContainerDescriptor* descriptor){
     WGPURayTracingAccelerationContainer ret = RL_CALLOC(1, sizeof(WGPURayTracingAccelerationContainerImpl));
@@ -7760,7 +7940,6 @@ void wgpuRaytracingPassEncoderSetBindGroup    (WGPURaytracingPassEncoder cpe, ui
         }
     };
     cpe->bindGroups[groupIndex] = bindGroup;
-    //ru_trackBindGroup(&cpe->resourceUsage, bindGroup);
 }
 
 void wgpuRaytracingPassEncoderTraceRays       (WGPURaytracingPassEncoder cpe, uint32_t rayGenerationOffset, uint32_t rayHitOffset, uint32_t rayMissOffset, uint32_t width, uint32_t height, uint32_t depth){

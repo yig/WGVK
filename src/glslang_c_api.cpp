@@ -1,4 +1,5 @@
 #include "SPIRV/GlslangToSpv.h"
+#include "glslang/Include/glslang_c_interface.h"
 #include <glslang/Public/ShaderLang.h>
 #include <glslang_c_api.h>
 #include <webgpu/webgpu.h>
@@ -97,6 +98,7 @@ static std::vector<uint32_t> glsl_to_spirv_single(WGPUDevice device, WGPUStringV
                 errorBuffer, WGPU_STRLEN
             }, device->uncapturedErrorCallbackInfo.userdata1, device->uncapturedErrorCallbackInfo.userdata2);
         }
+        puts(errorBuffer);
         
     }
     else{
@@ -116,9 +118,12 @@ static std::vector<uint32_t> glsl_to_spirv_single(WGPUDevice device, WGPUStringV
     }
     return std::vector<uint32_t>{};
 }
-
+static int glslang_initialize_process_called = 0;
 WGPUShaderModule wgpuDeviceCreateShaderModuleGLSL(WGPUDevice device, const WGPUShaderModuleDescriptor* shDesc){
-    glslang::InitializeProcess();
+    if(glslang_initialize_process_called == 0){
+        glslang::InitializeProcess();
+        glslang_initialize_process_called = 1;
+    }
     wgvk_assert(shDesc->nextInChain->sType == WGPUSType_ShaderSourceGLSL, "nextInChain->sType must be WGPUSType_ShaderSourceGLSL");
     WGPUShaderSourceGLSL* source = (WGPUShaderSourceGLSL*)shDesc->nextInChain;
     std::vector<uint32_t> spirvSource = glsl_to_spirv_single(device, source->code, wgpuShaderStageToGlslang(source->stage), glslang::EShTargetVulkan_1_4, glslang::EShTargetSpv_1_4);

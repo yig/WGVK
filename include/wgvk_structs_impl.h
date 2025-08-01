@@ -1933,7 +1933,11 @@ typedef struct WGPUBufferImpl{
 }WGPUBufferImpl;
 
 typedef struct WGPURayTracingShaderBindingTableImpl{
-    VkShaderGroupShaderKHR shaderGroup;
+    uint32_t refCount;
+    uint32_t shaderGroupCount;
+    uint32_t shaderStageCount;
+    VkRayTracingShaderGroupCreateInfoKHR* shaderGroups;
+    VkPipelineShaderStageCreateInfo* shaderStages;
     WGPUDevice device;
 }WGPURayTracingShaderBindingTableImpl;
 
@@ -2002,6 +2006,7 @@ typedef struct WGPUAdapterImpl{
     char cachedDeviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
     WGPUInstance instance;
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties;
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties;
     VkPhysicalDeviceMemoryProperties memProperties;
     QueueIndices queueIndices;
 }WGPUAdapterImpl;
@@ -2202,11 +2207,10 @@ typedef struct WGPUComputePipelineImpl{
 
 typedef struct WGPURaytracingPipelineImpl{
     VkPipeline raytracingPipeline;
-    WGPUPipelineLayout layout;
     uint32_t refCount;
-    WGPUBuffer raygenBindingTable;
-    WGPUBuffer missBindingTable;
-    WGPUBuffer hitBindingTable;
+    WGPUPipelineLayout layout;
+    WGPUBuffer sbtBuffer;
+    VkDeviceSize totalSbtSize;
 }WGPURaytracingPipelineImpl;
 
 typedef struct WGPUTextureViewImpl{
@@ -2218,12 +2222,14 @@ typedef struct WGPUTextureViewImpl{
     uint32_t width, height, depthOrArrayLayers;
     uint32_t sampleCount;
 }WGPUTextureViewImpl;
+
 typedef struct DefaultDynamicState{
     VkViewport viewport;
     VkRect2D scissorRect;
     uint32_t stencilReference;
     float blendConstants[4];
 }DefaultDynamicState;
+
 typedef struct CommandBufferAndSomeState{
     VkCommandBuffer buffer;
     VkPipelineLayout lastLayout;
@@ -2232,6 +2238,7 @@ typedef struct CommandBufferAndSomeState{
     WGPUBuffer indexBuffer;
     WGPUBindGroup graphicsBindGroups[8];
     WGPUBindGroup computeBindGroups[8];
+    WGPURaytracingPipeline lastRaytracingPipeline;
     DefaultDynamicState dynamicState;
 }CommandBufferAndSomeState;
 

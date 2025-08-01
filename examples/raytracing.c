@@ -1,17 +1,23 @@
 #include "common.h"
+#include "vulkan/vulkan_core.h"
 #include "wgvk.h"
 #include <stdlib.h>
 #include <math.h>
 
+extern const char raygenSource[];
+extern const char rchitSource[];
+extern const char rmissSource[];
+
+
 #define vertexFloatCount 9
-WGPUShaderModule compileGLSLModule(WGPUDevice device, const char* source){
+WGPUShaderModule compileGLSLModule(WGPUDevice device, const char* source, WGPUShaderStage stage){
     WGPUShaderSourceGLSL glslSource = {
     .chain.sType = WGPUSType_ShaderSourceGLSL,
         .code = {
             source,
             WGPU_STRLEN
         },
-        .stage = WGPUShaderStage_Vertex
+        .stage = stage
     };
     WGPUShaderModuleDescriptor vertexMD = {
         .nextInChain = &glslSource.chain
@@ -87,14 +93,195 @@ int main(){
         WGPUCommandBuffer cbuf = wgpuCommandEncoderFinish(enc, NULL);
         wgpuQueueSubmit(base.queue, 1, &cbuf);
     }
-    WGPUShaderSourceGLSL glslSource = {
-        .chain.sType = WGPUSType_ShaderSourceGLSL,
-        .code = STRVIEW(R"(#version 450
-        )"),
-        .stage = WGPUShaderStage_Vertex
+    WGPUShaderModule raygenModule = compileGLSLModule(base.device, raygenSource, WGPUShaderStage_RayGen);
+    WGPUShaderModule rchitModule  = compileGLSLModule(base.device, rchitSource,  WGPUShaderStage_ClosestHit);
+    WGPUShaderModule rmissModule  = compileGLSLModule(base.device, rmissSource,  WGPUShaderStage_Miss);
+    WGPURayTracingShaderBindingTableStageDescriptor stages[3] = {
+        {
+            .stage = WGPUShaderStage_RayGen,
+            .module = raygenModule,
+        },
+        {
+            .stage = WGPUShaderStage_ClosestHit,
+            .module = rchitModule,
+        },
+        {
+            .stage = WGPUShaderStage_Miss,
+            .module = rmissModule,
+        }
     };
-    WGPUShaderModuleDescriptor vertexMD = {
-        .nextInChain = &glslSource.chain
+    WGPURayTracingShaderBindingTableGroupDescriptor group = {
+        .anyHitIndex = 0,
+        .closestHitIndex = 0,
+        .generalIndex = 0,
+        .intersectionIndex = 0
     };
-    wgpuDeviceCreateShaderModule(base.device, &vertexMD);
+
+    WGPURayTracingShaderBindingTableDescriptor sbtableDesc = {
+        .stageCount = 3,
+        .stages = stages,
+        .groupCount = 1,
+        .groups = &group,
+    };
+    WGPURayTracingShaderBindingTable sbt = wgpuDeviceCreateRayTracingShaderBindingTable(base.device, &sbtableDesc);
+    WGPURayTracingStateDescriptor rtState = {
+        .shaderBindingTable = sbt,
+        .maxPayloadSize = 64,
+        .maxRecursionDepth = 8
+    };
+    WGPUBindGroupLayoutEntry bglEntries[2] = {
+        [0] = {
+            .binding = 0,
+            .visibility = WGPUShaderStage_RayGen,
+            .accelerationStructure = 1
+        },
+        [1] = {
+            .binding = 1,
+            .visibility = WGPUShaderStage_RayGen,
+            .storageTexture = {
+                .viewDimension = WGPUTextureViewDimension_2D,
+                .access = WGPUStorageTextureAccess_WriteOnly,
+                .format = WGPUTextureFormat_RGBA8Unorm
+            }
+        }
+    };
+    WGPUBindGroupLayoutDescriptor bglDesc = {
+        .entries = bglEntries,
+        .entryCount = 2,
+    };
+    WGPUBindGroupLayout bgLayout = wgpuDeviceCreateBindGroupLayout(base.device, &bglDesc);
+    WGPUPipelineLayoutDescriptor pllDesc = {
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = &bgLayout,
+    };
+    WGPUPipelineLayout plLayout = wgpuDeviceCreatePipelineLayout(base.device, &pllDesc);
+
+    WGPURayTracingPipelineDescriptor rtpDescriptor = {
+        .rayTracingState = rtState,
+        .layout = plLayout
+    };
+    WGPURaytracingPipeline rtPipeline = wgpuDeviceCreateRayTracingPipeline(base.device, &rtpDescriptor); 
 }
+
+
+
+const char raygenSource[] = R"(#version 460
+#extension GL_EXT_ray_tracing : require
+
+// Binding for acceleration structure
+layout(binding = 0) uniform accelerationStructureEXT topLevelAS;
+// Output image
+layout(binding = 1, rgba8) uniform image2D image;
+// Camera uniform buffer
+
+
+layout(binding = 2) uniform CameraProperties {
+    vec4 eye;
+    vec4 target;
+    vec4 up;
+    vec4 fovY;
+} camera;
+
+// Ray payload - will be passed to closest hit or miss shader
+layout(location = 0) rayPayloadEXT vec4 payload;
+
+void main() {
+    // Get the current pixel coordinate
+    const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+    const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
+    vec2 d = inUV * 2.0 - 1.0;
+
+    // Calculate ray origin and direction using camera matrices
+    vec3 origin = camera.eye.xyz;
+    vec3 target = camera.target.xyz;
+    vec3 direction = normalize(target - origin);
+    vec3 left = cross(normalize(camera.up.xyz), direction);
+    vec3 realup = normalize(cross(direction, left));
+    float factor = tan(camera.fovY.x * 0.5f);
+    vec3 raydirection = normalize(direction + factor * d.x * left + factor * d.y * realup);
+
+    payload = vec4(target.yx, 0.3f, 1);
+    // Initialize payload
+
+    // Trace ray
+    traceRayEXT(
+        topLevelAS,           // Acceleration structure
+        gl_RayFlagsOpaqueEXT, // Ray flags
+        0xFF,                 // Cull mask
+        0,                    // sbtRecordOffset
+        0,                    // sbtRecordStride
+        0,                    // missIndex
+        origin.xyz,           // Ray origin
+        0.001,                // Min ray distance
+        raydirection.xyz,     // Ray direction
+        100.0,                // Max ray distance
+        0                     // Payload location
+    );
+    
+    // Write result to output image
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payload.xyz, 1.0f));
+    //imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(vec2(gl_LaunchIDEXT.xy * 0.01f),1,1));
+}
+)";
+const char rchitSource[] = R"(#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_nonuniform_qualifier : enable
+
+// Bind scene descriptors
+//layout(binding = 3) buffer SceneDesc { vec4 data[]; } sceneDesc;
+//layout(binding = 4) uniform sampler2D textures[];
+
+// Ray payload
+layout(location = 0) rayPayloadInEXT vec4 payload;
+
+// Hit attributes from intersection
+hitAttributeEXT vec2 attribs;
+
+// Shader record buffer index
+//layout(binding = 4) uniform _ShaderRecordBuffer {
+//    int materialID;
+//} shaderRecordBuffer;
+
+void main(){
+    // Basic surface color (replace with your material system)
+    vec3 hitColor = vec3(0.7, 0.7, 0.7);
+    
+    // Get hit triangle vertices
+    int primitiveID = gl_PrimitiveID;
+    int materialID = 0;//shaderRecordBuffer.materialID;
+    
+    // Simple diffuse shading based on normal
+    vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
+    
+    // Calculate surface normal using barycentric coordinates
+    // (In a real implementation, you would use vertex data)
+    vec3 normal = normalize(vec3(0, 1, 0)); // Simplified normal
+    
+    // Direction to light (hardcoded for simplicity)
+    vec3 lightDir = normalize(vec3(1, 1, 1));
+    
+    // Simple diffuse lighting
+    float diffuse = max(dot(normal, lightDir), 0.2);
+    
+    // Set final color
+    //payload = vec4(hitColor * diffuse, 1.0);
+    payload = vec4(1.0,float(gl_InstanceID),0.0,1.0);
+}
+)";
+const char rmissSource[] = R"(#version 460
+#extension GL_EXT_ray_tracing : require
+
+// Ray payload
+layout(location = 0) rayPayloadInEXT vec4 payload;
+
+void main(){
+    // Sky color based on ray direction
+    vec3 dir = normalize(gl_WorldRayDirectionEXT);
+    
+    // Simple gradient for sky
+    float t = 0.5 * (dir.y + 1.0);
+    vec3 skyColor = mix(vec3(1.0, 1.0, 1.0), vec3(0.5, 0.7, 1.0), t);
+    
+    // Write sky color to payload
+    payload = vec4(skyColor, 1.0f);
+})";

@@ -2038,9 +2038,9 @@ WGPU_EXPORT void wgpuTextureSetLabel(WGPUTexture texture, WGPUStringView label) 
 WGPU_EXPORT void wgpuTextureViewSetLabel(WGPUTextureView textureView, WGPUStringView label) WGPU_FUNCTION_ATTRIBUTE;
 
 
+WGPURayTracingShaderBindingTable wgpuDeviceCreateRayTracingShaderBindingTable(WGPUDevice device, const WGPURayTracingShaderBindingTableDescriptor* descriptor);
 WGPURayTracingAccelerationContainer wgpuDeviceCreateRayTracingAccelerationContainer(WGPUDevice device, const WGPURayTracingAccelerationContainerDescriptor* descriptor);
 WGPURaytracingPipeline wgpuDeviceCreateRayTracingPipeline(WGPUDevice device, const WGPURayTracingPipelineDescriptor* descriptor);
-
 
 void wgpuInstanceAddRef                       (WGPUInstance instance);
 void wgpuAdapterAddRef                        (WGPUAdapter adapter);
