@@ -297,7 +297,7 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
         }break;
         #endif
         default:{
-            wgvk_assert(false, "Unsupported SType for SurfaceDescriptor.nextInChain");
+            wgvk_assert(false, "Unsupported SType for SurfaceDescriptor.nextInChain: %d\n", descriptor->nextInChain->sType);
         }
     }
     return ret;
@@ -1168,7 +1168,9 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     const char* deviceExtensionsToLookFor[] = {
         //#ifndef FORCE_HEADLESS
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        #if RENDERBUNDLES_AS_SECONDARY_COMMANDBUFFERS == 1
         VK_KHR_MAINTENANCE_7_EXTENSION_NAME,
+        #endif
         //#endif
         #if VULKAN_ENABLE_RAYTRACING == 1
         VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,      // "VK_KHR_acceleration_structure"
@@ -1185,11 +1187,19 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     const char* deviceExtensionsFound[deviceExtensionsToLookForCount + 1];
     uint32_t extInsertIndex = 0;
     for(uint32_t i = 0;i < deviceExtensionsToLookForCount;i++){
+        int deviceExtensionFound = 0;
         for(uint32_t j = 0;j < deviceExtensionCount;j++){
             if(strcmp(deviceExtensionsToLookFor[i], deprops[j].extensionName) == 0){
                 deviceExtensionsFound[extInsertIndex++] = deviceExtensionsToLookFor[i];
+                deviceExtensionFound = 1;
+                goto innerbreak;
             }
         }
+        innerbreak:
+        if(deviceExtensionFound == 0){
+            printf("Device extension not found: %s\n", deviceExtensionsToLookFor[i]);
+        }
+        
     }
     // Specify device features
     
@@ -4507,6 +4517,9 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
     multisampling.alphaToOneEnable = VK_FALSE; // Basic case
 
     // Depth Stencil State (Optional)
+    bool stencilEnable = descriptor->depthStencil && 
+    (descriptor->depthStencil->format == WGPUTextureFormat_Depth24PlusStencil8) ||  
+    (descriptor->depthStencil->format == WGPUTextureFormat_Depth32FloatStencil8);
     VkPipelineDepthStencilStateCreateInfo depthStencil zeroinit;
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     if (descriptor->depthStencil) {
@@ -4518,13 +4531,13 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
         depthStencil.minDepthBounds = 0.0f;
         depthStencil.maxDepthBounds = 1.0f;
 
-        bool stencilTestRequired =
-            ds->stencilFront.compare != WGPUCompareFunction_Undefined || ds->stencilFront.failOp != WGPUStencilOperation_Undefined ||
-            ds->stencilBack.compare != WGPUCompareFunction_Undefined || ds->stencilBack.failOp != WGPUStencilOperation_Undefined ||
-            ds->stencilReadMask != 0 || ds->stencilWriteMask != 0;
+        //bool stencilTestRequired =
+        //    ds->stencilFront.compare != WGPUCompareFunction_Undefined || ds->stencilFront.failOp != WGPUStencilOperation_Undefined ||
+        //    ds->stencilBack.compare != WGPUCompareFunction_Undefined || ds->stencilBack.failOp != WGPUStencilOperation_Undefined ||
+        //    ds->stencilReadMask != 0 || ds->stencilWriteMask != 0;
 
-        depthStencil.stencilTestEnable = stencilTestRequired ? VK_TRUE : VK_FALSE;
-        if(stencilTestRequired) {
+        depthStencil.stencilTestEnable = stencilEnable ? VK_TRUE : VK_FALSE;
+        if(stencilEnable) {
             depthStencil.front.failOp      = toVulkanStencilOperation(ds->stencilFront.failOp);
             depthStencil.front.passOp      = toVulkanStencilOperation(ds->stencilFront.passOp);
             depthStencil.front.depthFailOp = toVulkanStencilOperation(ds->stencilFront.depthFailOp);
@@ -4618,13 +4631,15 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
     for(uint32_t i = 0;i < descriptor->fragment->targetCount;i++){
         cAttachmentFormats[i] = toVulkanPixelFormat(descriptor->fragment->targets[i].format);
     }
+
+    
     VkPipelineRenderingCreateInfo renderingCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .pNext = NULL,
         .colorAttachmentCount = descriptor->fragment->targetCount,
         .pColorAttachmentFormats = cAttachmentFormats,
         .depthAttachmentFormat = descriptor->depthStencil ? toVulkanPixelFormat(descriptor->depthStencil->format) : VK_FORMAT_UNDEFINED,
-        .stencilAttachmentFormat = descriptor->depthStencil ? toVulkanPixelFormat(descriptor->depthStencil->format) : VK_FORMAT_UNDEFINED
+        .stencilAttachmentFormat = stencilEnable ? toVulkanPixelFormat(descriptor->depthStencil->format) : VK_FORMAT_UNDEFINED
     };
     VkPipelineRenderingCreateInfo* pRenderingCreateInfo = &renderingCreateInfo;
     #else

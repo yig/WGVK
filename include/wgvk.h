@@ -1524,7 +1524,7 @@ typedef struct WGPUStencilFaceState {
     WGPUStencilOperation passOp;
 } WGPUStencilFaceState;
 
-typedef struct WGVkDepthStencilState {
+typedef struct WGPUDepthStencilState {
     WGPUChainedStruct* nextInChain;
     WGPUTextureFormat format;
     Bool32 depthWriteEnabled;

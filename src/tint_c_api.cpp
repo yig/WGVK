@@ -1,4 +1,5 @@
 #include <iostream>
+#include <wgvk.h>
 #include <src/tint/lang/core/ir/transform/substitute_overrides.h>
 #include <src/tint/lang/wgsl/ast/identifier_expression.h>
 #include <src/tint/lang/wgsl/ast/templated_identifier.h>
@@ -17,7 +18,7 @@
 #include <src/tint/lang/wgsl/inspector/inspector.h>
 #include <src/tint/lang/spirv/writer/writer.h>
 #include <tint_c_api.h>
-#include <wgvk.h>
+
 #undef TRACELOG
 
 #define TRACELOG(...)

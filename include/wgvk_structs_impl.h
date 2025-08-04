@@ -1,6 +1,8 @@
 #ifndef WGPU_STRUCTS_IMPL_H
 #define WGPU_STRUCTS_IMPL_H
+#define VK_NO_PROTOTYPES
 #include <wgvk.h>
+#include <vulkan/vulkan_core.h>
 #include <external/VmaUsage.h>
 #include <wgvk_config.h>
 #include <stdbool.h>
@@ -74,7 +76,19 @@
 
 #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN
+    #define Rectangle w__Rectangle
+    #define LoadImage w__LoadImage
+    #define DrawText w__DrawText
+    #define DrawTextEx w__DrawTextEx
+    #define ShowCursor w__ShowCursor
+    #define AdapterType w__AdapterType
     #include <windows.h>
+    #undef AdapterType
+    #undef ShowCursor
+    #undef LoadImage
+    #undef DrawTextEx
+    #undef DrawText
+    #undef Rectangle
 #else
     #include <pthread.h>
 #endif
@@ -191,10 +205,12 @@ void wgvk_job_destroy(wgvk_job_t* job);
 #ifndef PHM_HASH_MULTIPLIER
 #define PHM_HASH_MULTIPLIER 0x9E3779B97F4A7C15ULL
 #endif
-
+#ifndef PHM_EMPTY_SLOT_KEY
 #define PHM_EMPTY_SLOT_KEY NULL
+#endif
+#ifndef PHM_DELETED_SLOT_KEY
 #define PHM_DELETED_SLOT_KEY ((void*)0xFFFFFFFFFFFFFFFF)
-
+#endif
 #define DEFINE_PTR_HASH_MAP(SCOPE, Name, ValueType)                                                                              \
                                                                                                                                  \
     typedef struct Name##_kv_pair {                                                                                              \
@@ -3369,6 +3385,7 @@ static inline VkFilter toVulkanFilterMode(WGPUFilterMode filterMode){
 
 static inline VkStencilOp toVulkanStencilOperation(WGPUStencilOperation op){
     switch(op){
+        case WGPUStencilOperation_Undefined: return VK_STENCIL_OP_ZERO;
         case WGPUStencilOperation_Keep: return VK_STENCIL_OP_KEEP;
         case WGPUStencilOperation_Zero: return VK_STENCIL_OP_ZERO;
         case WGPUStencilOperation_Replace: return VK_STENCIL_OP_REPLACE;
