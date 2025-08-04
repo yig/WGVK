@@ -5146,6 +5146,24 @@ void pcmNonnullFlattenCallback(void* fence_, WGPUCommandBufferVector* key, void*
     }
 }
 
+
+
+WGPURaytracingPassEncoder wgpuCommandEncoderBeginRaytracingPass(WGPUCommandEncoder enc, const WGPURayTracingPassDescriptor* rtDesc){
+    WGPURaytracingPassEncoder rtenc = RL_CALLOC(1, sizeof(WGPURaytracingPassEncoderImpl));
+    rtenc->device = enc->device;
+    rtenc->refCount = 2;
+    RenderPassCommandGenericVector_init(&rtenc->bufferedCommands);
+    rtenc->cmdEncoder = enc;
+    rtenc->cmdBuffer = enc->buffer;
+    return rtenc;
+}
+
+void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder){
+    recordVkCommands(commandEncoder->cmdEncoder->buffer, commandEncoder->device, &commandEncoder->bufferedCommands, NULL);
+}
+
+
+
 void resetFenceAndReleaseBuffers(void* fence_, WGPUCommandBufferVector* cBuffers, void* wgpudevice){
     WGPUDevice device = (WGPUDevice)wgpudevice;
     if(fence_){
@@ -5720,6 +5738,7 @@ static OptionalBarrier ru_trackTextureViewAndEmit(ResourceUsage* resourceUsage, 
 }
 static OptionalBarrier ru_trackBufferAndEmit(ResourceUsage* resourceUsage, WGPUBuffer buffer, BufferUsageSnap usage){
     BufferUsageRecord* rec = BufferUsageRecordMap_get(&resourceUsage->referencedBuffers, buffer);
+    
     if(rec != NULL){
         const VkBufferMemoryBarrier bufferBarrier = {
             VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -7620,6 +7639,10 @@ WGPURayTracingShaderBindingTable wgpuDeviceCreateRayTracingShaderBindingTable(WG
             .anyHitShader = descriptor->groups[i].anyHitIndex,
             .intersectionShader = descriptor->groups[i].intersectionIndex,
         };
+        if(ret->shaderGroups[i].type == VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR){
+            ret->shaderGroups[i].intersectionShader = VK_SHADER_UNUSED_KHR;
+            ret->shaderGroups[i].anyHitShader = VK_SHADER_UNUSED_KHR;
+        }
     }
     ret->shaderStageCount = descriptor->stageCount;
     ret->shaderStages = RL_CALLOC(descriptor->stageCount, sizeof(VkPipelineShaderStageCreateInfo));
@@ -7628,7 +7651,8 @@ WGPURayTracingShaderBindingTable wgpuDeviceCreateRayTracingShaderBindingTable(WG
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = toVulkanShaderStageBits(descriptor->stages[i].stage),
             .module = descriptor->stages[i].module->modules[wgpuShaderStageToEnum(descriptor->stages[i].stage)].module,
-            .pName = descriptor->stages[i].module->modules[wgpuShaderStageToEnum(descriptor->stages[i].stage)].epName,
+            //.pName = descriptor->stages[i].module->modules[wgpuShaderStageToEnum(descriptor->stages[i].stage)].epName,
+            .pName = "main",
         };
     }
     return ret;
@@ -7685,8 +7709,7 @@ WGPURaytracingPipeline wgpuDeviceCreateRayTracingPipeline(WGPUDevice device, con
     ret->sbtBuffer = wgpuDeviceCreateBuffer(device, &sbtBufferDesc);
     
     // Copy the handles to the mapped buffer
-    void* mappedData = NULL;
-    wgpuBufferGetMappedRange(ret->sbtBuffer, 0, shaderHandlesSizeInBytes);
+    void* mappedData = wgpuBufferGetMappedRange(ret->sbtBuffer, 0, shaderHandlesSizeInBytes);
     memcpy(mappedData, shaderHandles, shaderHandlesSizeInBytes);
     wgpuBufferUnmap(ret->sbtBuffer);
     
@@ -7933,7 +7956,13 @@ void wgpuCommandEncoderUpdateRayTracingAccelerationContainer(WGPUCommandEncoder 
 void wgpuRaytracingPassEncoderSetPipeline     (WGPURaytracingPassEncoder rte, WGPURaytracingPipeline raytracingPipeline){
 
     ru_trackRaytracingPipeline(&rte->resourceUsage, raytracingPipeline);
-    rte->device->functions.vkCmdBindPipeline(rte->cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, raytracingPipeline->raytracingPipeline);
+    RenderPassCommandGeneric setPipeline = {
+        .type = rp_command_type_set_raytracing_pipeline,
+        .setRaytracingPipeline = {
+            .pipeline = raytracingPipeline,    
+        }
+    };
+    RaytracingPassEncoder_PushCommand(rte, &setPipeline);
 }
 void wgpuRaytracingPassEncoderSetBindGroup    (WGPURaytracingPassEncoder cpe, uint32_t groupIndex, WGPUBindGroup bindGroup, uint32_t dynamicOffsetCount, const uint32_t* dynamicOffsets){
     RenderPassCommandSetBindGroup setBindGroup = {

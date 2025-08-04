@@ -111,10 +111,11 @@ int main(){
         }
     };
     WGPURayTracingShaderBindingTableGroupDescriptor group = {
+        .type = WGPURayTracingShaderBindingTableGroupType_TrianglesHitGroup, 
         .anyHitIndex = 0,
-        .closestHitIndex = 0,
+        .closestHitIndex = 1,
         .generalIndex = 0,
-        .intersectionIndex = 0
+        .intersectionIndex = 0,
     };
 
     WGPURayTracingShaderBindingTableDescriptor sbtableDesc = {
@@ -129,7 +130,7 @@ int main(){
         .maxPayloadSize = 64,
         .maxRecursionDepth = 8
     };
-    WGPUBindGroupLayoutEntry bglEntries[2] = {
+    WGPUBindGroupLayoutEntry bglEntries[3] = {
         [0] = {
             .binding = 0,
             .visibility = WGPUShaderStage_RayGen,
@@ -143,11 +144,20 @@ int main(){
                 .access = WGPUStorageTextureAccess_WriteOnly,
                 .format = WGPUTextureFormat_RGBA8Unorm
             }
+        },
+        [2] = {
+            .binding = 2,
+            .visibility = WGPUShaderStage_RayGen,
+            .buffer = {
+                .type = WGPUBufferBindingType_Uniform,
+                .minBindingSize = sizeof(float) * 16,
+                .hasDynamicOffset = 0
+            }
         }
     };
     WGPUBindGroupLayoutDescriptor bglDesc = {
         .entries = bglEntries,
-        .entryCount = 2,
+        .entryCount = 3,
     };
     WGPUBindGroupLayout bgLayout = wgpuDeviceCreateBindGroupLayout(base.device, &bglDesc);
     WGPUPipelineLayoutDescriptor pllDesc = {
@@ -160,7 +170,36 @@ int main(){
         .rayTracingState = rtState,
         .layout = plLayout
     };
-    WGPURaytracingPipeline rtPipeline = wgpuDeviceCreateRayTracingPipeline(base.device, &rtpDescriptor); 
+    WGPURaytracingPipeline rtPipeline = wgpuDeviceCreateRayTracingPipeline(base.device, &rtpDescriptor);
+
+    const WGPUTextureFormat rgba8u = WGPUTextureFormat_RGBA8Uint;
+    WGPUTextureDescriptor storageTextureDescriptor = {
+        .usage = WGPUTextureUsage_StorageBinding,
+        .dimension = WGPUTextureDimension_2D,
+        .size = {
+            .width = 1024,
+            .height = 1024,
+            .depthOrArrayLayers = 1
+        },
+        .format = rgba8u,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+        .viewFormatCount = 1,
+        .viewFormats = &rgba8u,
+    };
+    WGPUTexture storageTexture = wgpuDeviceCreateTexture(base.device, &storageTextureDescriptor);
+    WGPUCommandEncoder cenc = wgpuDeviceCreateCommandEncoder(base.device, NULL);
+    WGPURayTracingPassDescriptor rtDesc = {
+        .maxRecursionDepth = 4,
+        .maxPayloadSize = 64,
+        .shaderBindingTable = sbt,
+    };
+    WGPURaytracingPassEncoder rtenc = wgpuCommandEncoderBeginRaytracingPass(cenc, &rtDesc);
+    wgpuRaytracingPassEncoderSetPipeline(rtenc, rtPipeline);
+    wgpuRaytracingPassEncoderTraceRays(rtenc, 0, 32, 64, 1024, 1024, 1);
+    wgpuRaytracingPassEncoderEnd(rtenc);
+    WGPUCommandBuffer cbuffer =  wgpuCommandEncoderFinish(cenc, NULL);
+    wgpuQueueSubmit(base.queue, 1, &cbuffer);
 }
 
 

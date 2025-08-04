@@ -1880,9 +1880,9 @@ void wgpuSurfaceGetCurrentTexture             (WGPUSurface surface, WGPUSurfaceT
 void wgpuSurfacePresent                       (WGPUSurface surface);
 
 WGPURaytracingPassEncoder wgpuCommandEncoderBeginRaytracingPass(WGPUCommandEncoder enc, const WGPURayTracingPassDescriptor* rtDesc);
+void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder);
 WGPUComputePassEncoder wgpuCommandEncoderBeginComputePass(WGPUCommandEncoder enc, const WGPUComputePassDescriptor* cpdesc);
 void wgpuComputePassEncoderEnd(WGPUComputePassEncoder commandEncoder);
-void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder);
 WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder enc, const WGPURenderPassDescriptor* rpdesc);
     
 void wgpuCommandEncoderBuildRayTracingAccelerationContainer(WGPUCommandEncoder encoder, WGPURayTracingAccelerationContainer container);
