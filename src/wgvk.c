@@ -4523,8 +4523,8 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
 
     // Depth Stencil State (Optional)
     bool stencilEnable = descriptor->depthStencil && 
-    (descriptor->depthStencil->format == WGPUTextureFormat_Depth24PlusStencil8) ||  
-    (descriptor->depthStencil->format == WGPUTextureFormat_Depth32FloatStencil8);
+    ((descriptor->depthStencil->format == WGPUTextureFormat_Depth24PlusStencil8) ||  
+    (descriptor->depthStencil->format == WGPUTextureFormat_Depth32FloatStencil8));
     VkPipelineDepthStencilStateCreateInfo depthStencil zeroinit;
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     if (descriptor->depthStencil) {

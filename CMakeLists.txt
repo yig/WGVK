@@ -128,7 +128,8 @@ if(WGVK_BUILD_WGSL_SUPPORT)
 endif()
 
 if(WGVK_BUILD_GLSL_SUPPORT)
-  if(NOT TARGET glslang)
+  #find_package(glslang REQUIRED)
+  if(NOT TARGET glslang::glslang)
     set(ENABLE_OPT OFF)
     FetchContent_Declare(
       glslang
