@@ -255,6 +255,7 @@ typedef enum WGPUSType {
     WGPUSType_InstanceLayerSelection = 0x10000001,
     WGPUSType_BufferAllocatorSelector = 0x10000002,
     WGPUSType_ShaderSourceGLSL = 0x10000003,
+    WGPUSType_PrimitiveLineWidthInfo = 0x10000004,
 }WGPUSType WGPU_ENUM_ATTRIBUTE;
 
 typedef enum WGPUCallbackMode {
@@ -1491,9 +1492,14 @@ typedef struct WGPUFragmentState {
 } WGPUFragmentState;
 
 typedef struct WGPUCommandBufferDescriptor {
-    WGPUChainedStruct * nextInChain;
+    WGPUChainedStruct* nextInChain;
     WGPUStringView label;
 } WGPUCommandBufferDescriptor;
+
+typedef struct WGPUPrimitiveLineWidthInfo{
+    WGPUChainedStruct chain;
+    uint32_t lineWidth;
+}WGPUPrimitiveLineWidthInfo;
 
 typedef struct WGPUPrimitiveState {
     WGPUChainedStruct* nextInChain;

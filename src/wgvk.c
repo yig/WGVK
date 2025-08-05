@@ -4495,7 +4495,12 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
     rasterizer.depthClampEnable = VK_TRUE; // Usually false unless specific features needed
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // Default
-    rasterizer.lineWidth = 1.0f;
+    if(descriptor->primitive.nextInChain && descriptor->primitive.nextInChain->sType == WGPUSType_PrimitiveLineWidthInfo){
+        rasterizer.lineWidth = (float)((WGPUPrimitiveLineWidthInfo*)descriptor->primitive.nextInChain)->lineWidth;
+    }
+    else{
+        rasterizer.lineWidth = 1.0f;
+    }
     rasterizer.cullMode =  toVulkanCullMode(descriptor->primitive.cullMode);
     rasterizer.frontFace = toVulkanFrontFace(descriptor->primitive.frontFace);
     rasterizer.depthBiasEnable = descriptor->depthStencil ? (descriptor->depthStencil->depthBias != 0 || descriptor->depthStencil->depthBiasSlopeScale != 0.0f || descriptor->depthStencil->depthBiasClamp != 0.0f) : VK_FALSE;
