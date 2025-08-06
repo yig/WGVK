@@ -4,6 +4,8 @@
 #include <external/incbin.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
+
 #ifndef STRVIEW
     #define STRVIEW(X) (WGPUStringView){X, sizeof(X) - 1}
 #endif
@@ -294,7 +296,7 @@ int main(){
     rplDesc.layout = pllayout;
     WGPUComputePipeline sqpl = wgpuDeviceCreateComputePipeline(device, &sqplDesc);
     WGPUComputePipeline rpl = wgpuDeviceCreateComputePipeline(device, &rplDesc);
-    size_t floatCount = 32;
+    size_t floatCount = 64;
     WGPUBuffer buffer1 = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
         .size = floatCount * sizeof(float),
         .usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst
@@ -314,7 +316,7 @@ int main(){
     
     float* floatData = calloc(floatCount, sizeof(float));
     for(uint32_t i = 0;i < floatCount;i++){
-        floatData[i] = i;
+        floatData[i] = powf(1.5f, (float)i);
     }
 
     WGPUBindGroupEntry entries[2] = {
@@ -359,22 +361,47 @@ int main(){
     WGPUComputePassEncoder cpenc = wgpuCommandEncoderBeginComputePass(cenc, NULL);
     wgpuComputePassEncoderSetPipeline(cpenc, sqpl);
     wgpuComputePassEncoderSetBindGroup(cpenc, 0, group1, 0, NULL);
-    wgpuComputePassEncoderDispatchWorkgroups(cpenc, 1, 1, 1);
+    wgpuComputePassEncoderDispatchWorkgroups(cpenc, (floatCount + 31) / 32, 1, 1);
     wgpuComputePassEncoderSetPipeline(cpenc, sqpl);
     wgpuComputePassEncoderSetBindGroup(cpenc, 0, group2, 0, NULL);
-    wgpuComputePassEncoderDispatchWorkgroups(cpenc, 1, 1, 1);
+    wgpuComputePassEncoderDispatchWorkgroups(cpenc, (floatCount + 31) / 32, 1, 1);
     wgpuComputePassEncoderEnd(cpenc);
     wgpuComputePassEncoderRelease(cpenc);
-    wgpuCommandEncoderCopyBufferToBuffer(cenc, buffer1, 0, readableBuffer, 0, 64);
+    //wgpuCommandEncoderCopyBufferToBuffer(cenc, buffer1, 0, readableBuffer, 0, 64);
     WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(cenc, NULL);
     wgpuCommandEncoderRelease(cenc);
-    wgpuQueueSubmit(queue, 1, &cmdBuffer);
+    
+    WGPUCommandEncoder cenc2 = wgpuDeviceCreateCommandEncoder(device, NULL);
+    WGPUComputePassEncoder cpenc2 = wgpuCommandEncoderBeginComputePass(cenc2, NULL);
+    wgpuComputePassEncoderSetPipeline(cpenc2, rpl);
+    wgpuComputePassEncoderSetBindGroup(cpenc2, 0, group1, 0, NULL);
+    wgpuComputePassEncoderDispatchWorkgroups(cpenc2, (floatCount + 31) / 32, 1, 1);
+    wgpuComputePassEncoderSetPipeline(cpenc2, rpl);
+    wgpuComputePassEncoderSetBindGroup(cpenc2, 0, group2, 0, NULL);
+    wgpuComputePassEncoderDispatchWorkgroups(cpenc2, (floatCount + 31) / 32, 1, 1);
+    wgpuComputePassEncoderEnd(cpenc2);
+    wgpuComputePassEncoderRelease(cpenc2);
+    wgpuCommandEncoderCopyBufferToBuffer(cenc2, buffer1, 0, readableBuffer, 0, floatCount * sizeof(float));
+    WGPUCommandBuffer cmdBuffer2 = wgpuCommandEncoderFinish(cenc2, NULL);
+    WGPUCommandBuffer submits[2] = {cmdBuffer, cmdBuffer2};
+    wgpuQueueSubmit(queue, 2, submits);
     wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandBufferRelease(cmdBuffer2);
 
     float* floatRead = NULL;
-    wgpuBufferMap(readableBuffer, WGPUMapMode_Read, 0, 64, (void**)&floatRead);
-    for(int i = 0;i < 16;i++){
-        printf("output value[%d] = %f\n", i, floatRead[i]);
+    wgpuBufferMap(readableBuffer, WGPUMapMode_Read, 0, floatCount * sizeof(float), (void**)&floatRead);
+    if(floatCount <= 32){
+        for(int i = 0;i < floatCount;i++){
+            printf("output value[%d] = %f\n", i, floatRead[i]);
+        }
+    }
+    else{
+        for(size_t i = 0;i < 16;i++){
+            printf("output value[%llu] = %f\n", (unsigned long long)i, floatRead[i]);
+        }
+        for(size_t i = floatCount - 16;i < floatCount;i++){
+            printf("output value[%llu] = %f\n", (unsigned long long)i, floatRead[i]);
+        }
     }
     wgpuBufferUnmap(readableBuffer);
     wgpuBufferRelease(readableBuffer);
