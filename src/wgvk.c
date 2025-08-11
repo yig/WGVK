@@ -1575,7 +1575,7 @@ void wgpuBufferMap(WGPUBuffer buffer, WGPUMapMode mapmode, size_t offset, size_t
         #if USE_VMA_ALLOCATOR == 1
         case AllocationTypeVMA: {
             vmaMapMemory(buffer->device->allocator, buffer->vmaAllocation, data);
-            buffer->mappedRange = data
+            buffer->mappedRange = data;
         }break;
         #endif
         case AllocationTypeJustMemory: {

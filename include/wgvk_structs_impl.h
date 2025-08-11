@@ -1750,8 +1750,8 @@ static bool attachmentDescriptorCompare(AttachmentDescriptor a, AttachmentDescri
 
 typedef struct RenderPassLayout{
     uint32_t colorAttachmentCount;
-    AttachmentDescriptor colorAttachments [4];
-    AttachmentDescriptor colorResolveAttachments [4];
+    AttachmentDescriptor colorAttachments [max_color_attachments];
+    AttachmentDescriptor colorResolveAttachments [max_color_attachments];
     uint32_t depthAttachmentPresent;
     AttachmentDescriptor depthAttachment;
     //uint32_t colorResolveIndex;
@@ -2049,6 +2049,8 @@ typedef struct WGPUDeviceImpl{
     WgvkAllocator builtinAllocator;
     #if USE_VMA_ALLOCATOR == 1
     VmaAllocator allocator;
+    #else
+    void* vma_allocator_placeholder;
     #endif
 
     VmaPool aligned_hostVisiblePool;
