@@ -1182,7 +1182,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
         VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME,       // "VK_KHR_shader_float_controls" - required by spirv_1_4
         #endif
     };
-    const uint32_t deviceExtensionsToLookForCount = sizeof(deviceExtensionsToLookFor) / sizeof(const char*);
+    #define deviceExtensionsToLookForCount (sizeof(deviceExtensionsToLookFor) / sizeof(const char*))
     
     const char* deviceExtensionsFound[deviceExtensionsToLookForCount + 1];
     uint32_t extInsertIndex = 0;

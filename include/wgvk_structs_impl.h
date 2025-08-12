@@ -1493,7 +1493,9 @@ typedef struct RenderPassCommandBeginOcclusionQuery {
 } RenderPassCommandBeginOcclusionQuery;
 
 typedef struct RenderPassCommandEndOcclusionQuery {
-    // This command takes no arguments.
+    // Empty structs are technically illegal so a placeholder is needed
+    // GCC and Clang allow empty structs but MSVC does not
+    char nothing;
 } RenderPassCommandEndOcclusionQuery;
 
 typedef struct RenderPassCommandInsertDebugMarker {
@@ -2640,7 +2642,7 @@ typedef struct WGPUQuerySetImpl{
     } while (0)
 
 
-#define WGPU_VALIDATION_ERROR_MESSAGE(message ...) \
+#define WGPU_VALIDATION_ERROR_MESSAGE(message) \
     do {  \
         char vmessageBuffer[8192] = {0}; \
         snprintf(vmessageBuffer, 8192, message); \
