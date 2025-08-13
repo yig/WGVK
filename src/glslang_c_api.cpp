@@ -141,9 +141,11 @@ WGPUShaderModule wgpuDeviceCreateShaderModuleGLSL(WGPUDevice device, const WGPUS
     shadermodule->refCount = 1;
     VkShaderModule vkModule = VK_NULL_HANDLE;
     VkShaderModuleCreateInfo sci = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = spirvSource.size() * sizeof(uint32_t),
-        .pCode = spirvSource.data(),
+        VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        nullptr,
+        0,
+        spirvSource.size() * sizeof(uint32_t),
+        spirvSource.data(),
     };
     VkResult createResult = device->functions.vkCreateShaderModule(device->device, &sci, nullptr, &vkModule);
     if(createResult != VK_SUCCESS){
