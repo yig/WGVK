@@ -1699,12 +1699,11 @@ typedef struct WGPUString{
 static inline WGPUString WGPUStringFromView(WGPUStringView view){
     size_t length = view.length == WGPU_STRLEN ? strlen(view.data) : view.length;
     if(length == 0){
-        return (WGPUString){0};
+        return CLITERAL(WGPUString){0};
     }
-    WGPUString ret = {
-        .data = (char*)RL_CALLOC(length, 1),
-        .length = length
-    };
+    WGPUString ret;
+    ret.data = (char*)RL_CALLOC(length, 1);
+    ret.length = length;
     memcpy(ret.data, view.data, length);
     return ret;
 }
@@ -1823,7 +1822,8 @@ static inline void xs_update_u32(wgpuxorshiftstate* state, uint32_t x, uint32_t 
 }
 
 static size_t renderPassLayoutHash(RenderPassLayout layout){
-    wgpuxorshiftstate ret = {.x64 = 0x2545F4918F6CDD1D};
+    wgpuxorshiftstate ret;
+    ret.x64 = 0x2545F4918F6CDD1D;
     xs_update_u32(&ret, layout.depthAttachmentPresent << 6, layout.colorAttachmentCount);
     for(uint32_t i = 0;i < layout.colorAttachmentCount;i++){
         xs_update_u32(&ret, layout.colorAttachments[i].format, layout.colorAttachments[i].sampleCount);
@@ -2181,7 +2181,7 @@ static inline size_t Hash_FormatAspectAndSR(SlimViewCreateInfo obj){
     return hash;
 }
 
-DEFINE_GENERIC_HASH_MAP(static inline, Texture_ViewCache, SlimViewCreateInfo, WGPUTextureView, Hash_FormatAspectAndSR, Compare_FormatAspectAndSR, (SlimViewCreateInfo){VK_FORMAT_UNDEFINED});
+DEFINE_GENERIC_HASH_MAP(static inline, Texture_ViewCache, SlimViewCreateInfo, WGPUTextureView, Hash_FormatAspectAndSR, Compare_FormatAspectAndSR, CLITERAL(SlimViewCreateInfo){VK_FORMAT_UNDEFINED});
 typedef struct WGPUTextureImpl{
     VkImage image;
     VkFormat format;
@@ -2328,7 +2328,7 @@ static inline size_t cmpDynamicState(DefaultDynamicState a, DefaultDynamicState 
     a.blendConstants[0] == b.blendConstants[0] &&
     a.stencilReference == b.stencilReference;
 }
-DEFINE_GENERIC_HASH_MAP(static inline, DynamicStateCommandBufferMap, DefaultDynamicState, VkCommandBuffer, hashDynamicState, cmpDynamicState, (DefaultDynamicState){0})
+DEFINE_GENERIC_HASH_MAP(static inline, DynamicStateCommandBufferMap, DefaultDynamicState, VkCommandBuffer, hashDynamicState, cmpDynamicState, CLITERAL(DefaultDynamicState){0})
 
 typedef struct WGPURenderBundleImpl{
     RenderPassCommandGenericVector bufferedCommands;
@@ -2481,7 +2481,7 @@ typedef struct WGPUQuerySetImpl{
                 (device_ptr)->uncapturedErrorCallbackInfo.callback( \
                     (const WGPUDevice*)(device_ptr), \
                     (error_type), \
-                    (WGPUStringView){resolved_message, message_len}, \
+                    CLITERAL(WGPUStringView){resolved_message, message_len}, \
                     (device_ptr)->uncapturedErrorCallbackInfo.userdata1, \
                     (device_ptr)->uncapturedErrorCallbackInfo.userdata2 \
                 ); \

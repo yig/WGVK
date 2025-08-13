@@ -142,6 +142,7 @@ if(WGVK_BUILD_GLSL_SUPPORT)
   add_library(glslang_c_api STATIC "${CMAKE_CURRENT_LIST_DIR}/src/glslang_c_api.cpp")
   target_link_libraries(glslang_c_api PUBLIC glslang)
   target_include_directories(glslang_c_api PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include")
+  target_compile_features(glslang_c_api PRIVATE cxx_std_17)
 
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC SUPPORT_GLSL=1)
   list(APPEND BUNDLE_LIST ${WGVK_PRIMARY_TARGET_NAME} glslang glslang_c_api)
