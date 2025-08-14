@@ -321,7 +321,7 @@ WGPUStatus wgpuDeviceGetAdapterInfo(WGPUDevice device, WGPUAdapterInfo* adapterI
 
     vkGetPhysicalDeviceProperties2(device->adapter->physicalDevice, &deviceProperties2);
 
-    strncpy(device->adapter->cachedDeviceName, deviceProperties2.properties.deviceName, VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1);
+    strncpy(device->adapter->cachedDeviceName, deviceProperties2.properties.deviceName, VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
     device->adapter->cachedDeviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1] = '\0'; // Explicitly null-terminate
 
     // Set the WGPUStringView to point to the stable, cached string.
