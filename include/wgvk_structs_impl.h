@@ -77,9 +77,6 @@
 #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN
     #define Rectangle w__Rectangle
-    #define LoadImage w__LoadImage
-    #define DrawText w__DrawText
-    #define DrawTextEx w__DrawTextEx
     #define ShowCursor w__ShowCursor
     #define AdapterType w__AdapterType
     #include <windows.h>
