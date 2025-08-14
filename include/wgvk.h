@@ -137,30 +137,30 @@ typedef enum WGPUShaderStageEnum{
 }WGPUShaderStageEnum;
 
 typedef WGPUFlags WGPUShaderStage;
-const static WGPUShaderStage WGPUShaderStage_None = 0;
-const static WGPUShaderStage WGPUShaderStage_Vertex = (((WGPUFlags)1) << WGPUShaderStageEnum_Vertex);
-const static WGPUShaderStage WGPUShaderStage_TessControl = (((WGPUFlags)1) << WGPUShaderStageEnum_TessControl);
-const static WGPUShaderStage WGPUShaderStage_TessEvaluation = (((WGPUFlags)1) << WGPUShaderStageEnum_TessEvaluation);
-const static WGPUShaderStage WGPUShaderStage_Geometry = (((WGPUFlags)1) << WGPUShaderStageEnum_Geometry);
-const static WGPUShaderStage WGPUShaderStage_Fragment = (((WGPUFlags)1) << WGPUShaderStageEnum_Fragment);
-const static WGPUShaderStage WGPUShaderStage_Compute = (((WGPUFlags)1) << WGPUShaderStageEnum_Compute);
-const static WGPUShaderStage WGPUShaderStage_RayGen = (((WGPUFlags)1) << WGPUShaderStageEnum_RayGen);
-const static WGPUShaderStage WGPUShaderStage_RayGenNV = (((WGPUFlags)1) << WGPUShaderStageEnum_RayGenNV);
-const static WGPUShaderStage WGPUShaderStage_Intersect = (((WGPUFlags)1) << WGPUShaderStageEnum_Intersect);
-const static WGPUShaderStage WGPUShaderStage_IntersectNV = (((WGPUFlags)1) << WGPUShaderStageEnum_IntersectNV);
-const static WGPUShaderStage WGPUShaderStage_AnyHit = (((WGPUFlags)1) << WGPUShaderStageEnum_AnyHit);
-const static WGPUShaderStage WGPUShaderStage_AnyHitNV = (((WGPUFlags)1) << WGPUShaderStageEnum_AnyHitNV);
-const static WGPUShaderStage WGPUShaderStage_ClosestHit = (((WGPUFlags)1) << WGPUShaderStageEnum_ClosestHit);
-const static WGPUShaderStage WGPUShaderStage_ClosestHitNV = (((WGPUFlags)1) << WGPUShaderStageEnum_ClosestHitNV);
-const static WGPUShaderStage WGPUShaderStage_Miss = (((WGPUFlags)1) << WGPUShaderStageEnum_Miss);
-const static WGPUShaderStage WGPUShaderStage_MissNV = (((WGPUFlags)1) << WGPUShaderStageEnum_MissNV);
-const static WGPUShaderStage WGPUShaderStage_Callable = (((WGPUFlags)1) << WGPUShaderStageEnum_Callable);
-const static WGPUShaderStage WGPUShaderStage_CallableNV = (((WGPUFlags)1) << WGPUShaderStageEnum_CallableNV);
-const static WGPUShaderStage WGPUShaderStage_Task = (((WGPUFlags)1) << WGPUShaderStageEnum_Task);
-const static WGPUShaderStage WGPUShaderStage_TaskNV = (((WGPUFlags)1) << WGPUShaderStageEnum_TaskNV);
-const static WGPUShaderStage WGPUShaderStage_Mesh = (((WGPUFlags)1) << WGPUShaderStageEnum_Mesh);
-const static WGPUShaderStage WGPUShaderStage_MeshNV = (((WGPUFlags)1) << WGPUShaderStageEnum_MeshNV);
-const static WGPUShaderStage WGPUShaderStage_EnumCount = (((WGPUFlags)1) << WGPUShaderStageEnum_EnumCount);
+static const WGPUShaderStage WGPUShaderStage_None = 0;
+static const WGPUShaderStage WGPUShaderStage_Vertex = (((WGPUFlags)1) << WGPUShaderStageEnum_Vertex);
+static const WGPUShaderStage WGPUShaderStage_TessControl = (((WGPUFlags)1) << WGPUShaderStageEnum_TessControl);
+static const WGPUShaderStage WGPUShaderStage_TessEvaluation = (((WGPUFlags)1) << WGPUShaderStageEnum_TessEvaluation);
+static const WGPUShaderStage WGPUShaderStage_Geometry = (((WGPUFlags)1) << WGPUShaderStageEnum_Geometry);
+static const WGPUShaderStage WGPUShaderStage_Fragment = (((WGPUFlags)1) << WGPUShaderStageEnum_Fragment);
+static const WGPUShaderStage WGPUShaderStage_Compute = (((WGPUFlags)1) << WGPUShaderStageEnum_Compute);
+static const WGPUShaderStage WGPUShaderStage_RayGen = (((WGPUFlags)1) << WGPUShaderStageEnum_RayGen);
+static const WGPUShaderStage WGPUShaderStage_RayGenNV = (((WGPUFlags)1) << WGPUShaderStageEnum_RayGenNV);
+static const WGPUShaderStage WGPUShaderStage_Intersect = (((WGPUFlags)1) << WGPUShaderStageEnum_Intersect);
+static const WGPUShaderStage WGPUShaderStage_IntersectNV = (((WGPUFlags)1) << WGPUShaderStageEnum_IntersectNV);
+static const WGPUShaderStage WGPUShaderStage_AnyHit = (((WGPUFlags)1) << WGPUShaderStageEnum_AnyHit);
+static const WGPUShaderStage WGPUShaderStage_AnyHitNV = (((WGPUFlags)1) << WGPUShaderStageEnum_AnyHitNV);
+static const WGPUShaderStage WGPUShaderStage_ClosestHit = (((WGPUFlags)1) << WGPUShaderStageEnum_ClosestHit);
+static const WGPUShaderStage WGPUShaderStage_ClosestHitNV = (((WGPUFlags)1) << WGPUShaderStageEnum_ClosestHitNV);
+static const WGPUShaderStage WGPUShaderStage_Miss = (((WGPUFlags)1) << WGPUShaderStageEnum_Miss);
+static const WGPUShaderStage WGPUShaderStage_MissNV = (((WGPUFlags)1) << WGPUShaderStageEnum_MissNV);
+static const WGPUShaderStage WGPUShaderStage_Callable = (((WGPUFlags)1) << WGPUShaderStageEnum_Callable);
+static const WGPUShaderStage WGPUShaderStage_CallableNV = (((WGPUFlags)1) << WGPUShaderStageEnum_CallableNV);
+static const WGPUShaderStage WGPUShaderStage_Task = (((WGPUFlags)1) << WGPUShaderStageEnum_Task);
+static const WGPUShaderStage WGPUShaderStage_TaskNV = (((WGPUFlags)1) << WGPUShaderStageEnum_TaskNV);
+static const WGPUShaderStage WGPUShaderStage_Mesh = (((WGPUFlags)1) << WGPUShaderStageEnum_Mesh);
+static const WGPUShaderStage WGPUShaderStage_MeshNV = (((WGPUFlags)1) << WGPUShaderStageEnum_MeshNV);
+static const WGPUShaderStage WGPUShaderStage_EnumCount = (((WGPUFlags)1) << WGPUShaderStageEnum_EnumCount);
 
 typedef WGPUFlags WGPUTextureUsage;
 static const WGPUTextureUsage WGPUTextureUsage_None = 0x0000000000000000;
@@ -804,20 +804,20 @@ typedef enum WGPURayTracingShaderBindingTableGroupType{
 }WGPURayTracingShaderBindingTableGroupType;
 
 typedef WGPUFlags WGPURayTracingAccelerationGeometryUsage;
-const static WGPURayTracingAccelerationGeometryUsage WGPURayTracingAccelerationGeometryUsage_Opaque = 0x00000001;
-const static WGPURayTracingAccelerationGeometryUsage WGPURayTracingAccelerationGeometryUsage_AllowAnyHit = 0x00000002;
+static const WGPURayTracingAccelerationGeometryUsage WGPURayTracingAccelerationGeometryUsage_Opaque = 0x00000001;
+static const WGPURayTracingAccelerationGeometryUsage WGPURayTracingAccelerationGeometryUsage_AllowAnyHit = 0x00000002;
 
 typedef WGPUFlags WGPURayTracingAccelerationInstanceUsage;
-const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_TriangleCullDisable = 0x00000001;
-const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_TriangleFrontCounterclockwise = 0x00000002;
-const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_ForceOpaque = 0x00000004;
-const static WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_ForceNoOpaque = 0x00000008;
+static const WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_TriangleCullDisable = 0x00000001;
+static const WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_TriangleFrontCounterclockwise = 0x00000002;
+static const WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_ForceOpaque = 0x00000004;
+static const WGPURayTracingAccelerationInstanceUsage WGPURayTracingAccelerationInstanceUsage_ForceNoOpaque = 0x00000008;
 
 typedef WGPUFlags WGPURayTracingAccelerationContainerUsage;
-const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_AllowUpdate = 0x00000001;
-const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_PreferFastTrace = 0x00000002;
-const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_PreferFastBuild = 0x00000004;
-const static WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_LowMemory = 0x00000008;
+static const WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_AllowUpdate = 0x00000001;
+static const WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_PreferFastTrace = 0x00000002;
+static const WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_PreferFastBuild = 0x00000004;
+static const WGPURayTracingAccelerationContainerUsage WGPURayTracingAccelerationContainerUsage_LowMemory = 0x00000008;
 
 
 typedef struct WGPUChainedStruct {

@@ -2103,13 +2103,13 @@ static inline void FenceCache_Destroy(FenceCache* ptr){
     VkFenceVector_free(&ptr->cachedFences);
 }
 typedef uint8_t SlimComponentSwizzle;
-const static SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_IDENTITY = VK_COMPONENT_SWIZZLE_IDENTITY;
-const static SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_ZERO = VK_COMPONENT_SWIZZLE_ZERO;
-const static SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_ONE = VK_COMPONENT_SWIZZLE_ONE;
-const static SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_R = VK_COMPONENT_SWIZZLE_R;
-const static SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_G = VK_COMPONENT_SWIZZLE_G;
-const static SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_B = VK_COMPONENT_SWIZZLE_B;
-const static SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_A = VK_COMPONENT_SWIZZLE_A;
+static const SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_IDENTITY = VK_COMPONENT_SWIZZLE_IDENTITY;
+static const SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_ZERO = VK_COMPONENT_SWIZZLE_ZERO;
+static const SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_ONE = VK_COMPONENT_SWIZZLE_ONE;
+static const SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_R = VK_COMPONENT_SWIZZLE_R;
+static const SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_G = VK_COMPONENT_SWIZZLE_G;
+static const SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_B = VK_COMPONENT_SWIZZLE_B;
+static const SlimComponentSwizzle SLIM_COMPONENT_SWIZZLE_A = VK_COMPONENT_SWIZZLE_A;
 
 typedef struct SlimComponentMapping{
     SlimComponentSwizzle r;
