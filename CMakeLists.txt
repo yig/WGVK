@@ -80,6 +80,11 @@ endif()
   add_library(${WGVK_PRIMARY_TARGET_NAME} STATIC ${WGVK_CORE_SRC_LIST})
 set(BUNDLE_LIST "")
 
+target_compile_features(${WGVK_PRIMARY_TARGET_NAME} PUBLIC c_std_11)
+if(MSVC)
+  target_compile_options(${WGVK_PRIMARY_TARGET_NAME} PUBLIC "/experimental:c11atomics")
+endif()
+
 if(WGVK_BUILD_WGSL_SUPPORT)
   
   target_compile_definitions(${WGVK_PRIMARY_TARGET_NAME} PUBLIC RG_STATIC=1 SUPPORT_WGSL=1 WGVK_DISABLE_ASSERT=1)
