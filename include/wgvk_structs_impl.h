@@ -2462,6 +2462,7 @@ typedef struct WGPUQuerySetImpl{
 }WGPUQuerySetImpl;
 
 
+char* sw_sprintf(const char* format, ...);
 
 
 #if WGPU_VALIDATION_ENABLED
