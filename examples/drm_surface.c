@@ -245,7 +245,7 @@ int main(){
     };
     WGPUSurface surface = wgpuInstanceCreateSurface(instance, &surfDesc);
     if(surface == NULL){
-        fprintf(stderr, "[Error] §wgpuInstanceCreateSurface returned NULL\n");
+        fprintf(stderr, "[Error] wgpuInstanceCreateSurface returned NULL\n");
         fprintf(stderr, "[Error] Unable to acquire the desired display, are you running a compositor?\n");
         exit(1);
     }
