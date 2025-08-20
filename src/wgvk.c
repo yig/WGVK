@@ -5989,6 +5989,9 @@ void wgpuSurfaceGetCurrentTexture(WGPUSurface surface, WGPUSurfaceTexture* surfa
             syncState->acquireImageSemaphoreSignalled = true;
         }
         switch(acquireResult){
+            case VK_ERROR_SURFACE_LOST_KHR:
+                surfaceTexture->status = WGPUSurfaceGetCurrentTextureStatus_Lost;
+            break;
             case VK_SUBOPTIMAL_KHR:
                 surfaceTexture->status = WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal;
             break;

@@ -268,7 +268,7 @@ int main(){
     WGPUSurfaceConfiguration surfaceConfiguration = {
         .device = device,
         .alphaMode = WGPUCompositeAlphaMode_Opaque,
-        .presentMode = WGPUPresentMode_Fifo,
+        .presentMode = WGPUPresentMode_Immediate,
         .format = scFormat,
         .viewFormats = &scFormat,
         .viewFormatCount = 1,
@@ -281,6 +281,7 @@ int main(){
     
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     WGPUSurfaceTexture surfaceTexture;
+    uint64_t frameCount = 0;
     while(true){
         wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
         if(surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal){
@@ -298,11 +299,12 @@ int main(){
         });
         WGPUCommandEncoder cenc = wgpuDeviceCreateCommandEncoder(device, NULL);
         WGPURenderPassColorAttachment colorAttachment = {
-            .clearValue = (WGPUColor){0.5,0.2,0,0.5},
+            .clearValue = (WGPUColor){((double)(frameCount % 64)) / 64.0,0.2,0,0.5},
             .loadOp = WGPULoadOp_Clear,
             .storeOp = WGPUStoreOp_Store,
             .view = surfaceView
         };
+        frameCount++;
 
         WGPURenderPassEncoder rpenc = wgpuCommandEncoderBeginRenderPass(cenc, &(const WGPURenderPassDescriptor){
             .colorAttachmentCount = 1,
@@ -314,7 +316,6 @@ int main(){
         wgpuCommandEncoderRelease(cenc);
         wgpuCommandBufferRelease(cbuf);
         wgpuSurfacePresent(surface);
-        break;
     }
     sleep(1);
 
