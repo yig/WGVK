@@ -584,7 +584,9 @@ static void fenceFreeCallback(void* userdata_){
     wgvk_assert(insert != NULL, "Fence freed but not present in FIF cache");
 
     for(size_t i = 0;i < insert->size;i++){
-        wgpuCommandBufferRelease(insert->data[i]);
+        WGPUCommandBuffer bufferi = insert->data[i];
+        wgvk_assert(bufferi->refCount == 1, "Unreasonable refCount");
+        wgpuCommandBufferRelease(bufferi);
     }
     WGPUCommandBufferVector_clear(insert);
     wgpuFenceRelease(userdata->fence);
@@ -2479,33 +2481,35 @@ WGPUBindGroupLayout wgpuDeviceCreateBindGroupLayout(WGPUDevice device, const WGP
     ret->refCount = 1;
     ret->device = device;
     ret->entryCount = bgldesc->entryCount;
-    VkDescriptorSetLayoutCreateInfo slci zeroinit;
     
-    slci.bindingCount = bgldesc->entryCount;
     const WGPUBindGroupLayoutEntry* entries = bgldesc->entries;
     const uint32_t entryCount = bgldesc->entryCount;
 
-    VkDescriptorSetLayoutBindingVector bindings;
-    VkDescriptorSetLayoutBindingVector_initWithSize(&bindings, slci.bindingCount);
+    VkDescriptorSetLayoutBindingVector vkBindings;
+    VkDescriptorSetLayoutBindingVector_initWithSize(&vkBindings, bgldesc->entryCount);
 
-    for(uint32_t i = 0;i < slci.bindingCount;i++){
-        bindings.data[i].descriptorCount = 1;
-        bindings.data[i].binding = entries[i].binding;
+    for(uint32_t i = 0;i < bgldesc->entryCount;i++){
+        vkBindings.data[i].descriptorCount = 1;
+        vkBindings.data[i].binding = entries[i].binding;
         VkDescriptorType vkdtype = extractVkDescriptorType(entries + i);
-        bindings.data[i].descriptorType = vkdtype;
+        vkBindings.data[i].descriptorType = vkdtype;
 
         if(entries[i].visibility == 0){
             //TRACELOG(WGPU_LOG_WARNING, "Empty visibility detected, falling back to Vertex | Fragment | Compute mask");
-            bindings.data[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            vkBindings.data[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
         }
 
         else{
-            bindings.data[i].stageFlags = toVulkanShaderStageBits(entries[i].visibility);
+            vkBindings.data[i].stageFlags = toVulkanShaderStageBits(entries[i].visibility);
         }
     }
+    
+    VkDescriptorSetLayoutCreateInfo slci = {
+        .bindingCount = bgldesc->entryCount,
+        .pBindings = vkBindings.data,
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+    };
 
-    slci.pBindings = bindings.data;
-    slci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     VkResult createResult = device->functions.vkCreateDescriptorSetLayout(device->device, &slci, NULL, &ret->layout);
     if(createResult != VK_SUCCESS){
         RL_FREE(ret);
@@ -2518,7 +2522,7 @@ WGPUBindGroupLayout wgpuDeviceCreateBindGroupLayout(WGPUDevice device, const WGP
     }
     ret->entries = entriesCopy;
 
-    VkDescriptorSetLayoutBindingVector_free(&bindings);
+    VkDescriptorSetLayoutBindingVector_free(&vkBindings);
     
     return ret;
     EXIT();
@@ -4126,8 +4130,10 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
     //WGPUCommandBuffer sbuffer = buffers[0];
     //ImageUsageRecordMap_for_each(&sbuffer->resourceUsage.referencedTextures, registerTransitionCallback, pscache); 
     
-    
-    WGPUCommandBuffer cachebuffer = wgpuCommandEncoderFinish(queue->presubmitCache, NULL);
+    WGPUCommandBufferDescriptor cbd = {
+        .label = STRVIEW("PresubmitCache"),
+    };
+    WGPUCommandBuffer cachebuffer = wgpuCommandEncoderFinish(queue->presubmitCache, &cbd);
     
     //submittable.data[0] = cachebuffer->buffer;
     //for(size_t i = 0;i < commandCount;i++){
@@ -4306,7 +4312,8 @@ void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount, const WGPUCommandBuff
         WGPUCommandBufferVector_init(&insert);
         
         WGPUCommandBufferVector_push_back(&insert, cachebuffer);
-        wgpuCommandBufferAddRef(cachebuffer);
+        
+        // TODO IMPORTANT: Is this really not required here? wgpuCommandBufferAddRef(cachebuffer);
         
 
         for(size_t i = 0;i < commandCount;i++){
@@ -4537,7 +4544,9 @@ void wgpuSurfaceConfigure(WGPUSurface surface, const WGPUSurfaceConfiguration* c
         surface->images[i]->image = tmpImages[i];
 
         VkSemaphoreCreateInfo vci = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-        device->functions.vkCreateSemaphore(device->device, &vci, NULL, surface->presentSemaphores + i);
+        VkSemaphore createdSemaphore = VK_NULL_HANDLE;
+        device->functions.vkCreateSemaphore(device->device, &vci, NULL, &createdSemaphore);
+        surface->presentSemaphores[i] = createdSemaphore;
     }
     EXIT();
 }
@@ -4546,10 +4555,12 @@ void wgpuSurfaceRelease(WGPUSurface surface){
     ENTRY();
     if(--surface->refCount == 0){
         if(surface->swapchain){
-            RL_FREE((void*)surface->images);
-            RL_FREE(surface->formatCache);
-            RL_FREE(surface->wgpuFormatCache);
-            RL_FREE(surface->presentModeCache);
+            wgpuSurfaceUnconfigure(surface);
+
+            //RL_FREE((void*)surface->images);
+            //RL_FREE(surface->formatCache);
+            //RL_FREE(surface->wgpuFormatCache);
+            //RL_FREE(surface->presentModeCache);
             surface->device->functions.vkDestroySwapchainKHR(surface->device->device, surface->swapchain, NULL);
         }
     }
@@ -4659,9 +4670,16 @@ void wgpuRenderPassEncoderRelease(WGPURenderPassEncoder rpenc) {
 void wgpuShaderModuleRelease(WGPUShaderModule module){
     ENTRY();
     if(--module->refCount == 0){
-        
-        module->device->functions.vkDestroyShaderModule(module->device->device, module->vulkanModuleMultiEP, NULL);
-        
+        if(module->vulkanModuleMultiEP){
+            module->device->functions.vkDestroyShaderModule(module->device->device, module->vulkanModuleMultiEP, NULL);
+        }
+        else{
+            for(size_t i = 0;i < 16;i++){
+                if(module->modules[i].module){
+                    module->device->functions.vkDestroyShaderModule(module->device->device, module->modules[i].module, NULL);
+                }
+            }
+        }
         if(module->source->sType == WGPUSType_ShaderSourceSPIRV){
             RL_FREE((void*)((WGPUShaderSourceSPIRV*)module->source)->code);
         }
@@ -4675,7 +4693,7 @@ void wgpuShaderModuleRelease(WGPUShaderModule module){
 }
 void wgpuSamplerRelease(WGPUSampler sampler){
     ENTRY();
-    if(!--sampler->refCount){
+    if(--sampler->refCount == 0){
         sampler->device->functions.vkDestroySampler(sampler->device->device, sampler->sampler, NULL);
         RL_FREE(sampler);
     }
@@ -4693,7 +4711,7 @@ void wgpuRenderPipelineRelease(WGPURenderPipeline pipeline){
 
 void wgpuComputePipelineRelease(WGPUComputePipeline pipeline){
     ENTRY();
-    if(!--pipeline->refCount){
+    if(--pipeline->refCount == 0){
         wgpuPipelineLayoutRelease(pipeline->layout);
         pipeline->device->functions.vkDestroyPipeline(pipeline->device->device, pipeline->computePipeline, NULL);
         RL_FREE(pipeline);
@@ -4726,27 +4744,60 @@ void wgpuBufferRelease(WGPUBuffer buffer) {
     EXIT();
 }
 
+WGPUBindGroupLayout wgpuBindGroupLayoutRelease_withReturn(WGPUBindGroupLayout bglayout){
+    ENTRY();
+    if(--bglayout->refCount == 0){
+        WGPUDevice device = bglayout->device;
+        for(uint32_t i = 0;i < framesInFlight;i++){
+            PerframeCache* fci = DeviceGetFIFCache(bglayout->device, i);
+            DescriptorSetAndPoolVector* dspVector = BindGroupCacheMap_get(&fci->bindGroupCache, bglayout);
+            if(dspVector){
+                for(size_t i = 0;i < dspVector->size;i++){
+                    device->functions.vkDestroyDescriptorPool(device->device, dspVector->data[i].pool, NULL);
+                }
+                BindGroupCacheMap_erase(&fci->bindGroupCache, bglayout);
+            }
+        }
+        device->functions.vkDestroyDescriptorSetLayout(bglayout->device->device, bglayout->layout, NULL);
+        RL_FREE((void*)bglayout->entries);
+        RL_FREE((void*)bglayout);
+        return NULL;
+    }
+    EXIT();
+    return bglayout;
+}
+void wgpuBindGroupLayoutRelease(WGPUBindGroupLayout bglayout){
+    (void)wgpuBindGroupLayoutRelease_withReturn(bglayout);
+}
+
 void wgpuBindGroupRelease(WGPUBindGroup dshandle) {
     ENTRY();
     if (--dshandle->refCount == 0) {
         releaseAllAndClear(&dshandle->resourceUsage);
-        wgpuBindGroupLayoutRelease(dshandle->layout);
-        BindGroupCacheMap* bgcm = &DeviceGetFIFCache(dshandle->device, dshandle->cacheIndex)->bindGroupCache;
-        DescriptorSetAndPool insertValue = {
-            .pool = dshandle->pool,
-            .set = dshandle->set
-        };
-        DescriptorSetAndPoolVector* maybeAlreadyThere = BindGroupCacheMap_get(bgcm, dshandle->layout);
-        if(maybeAlreadyThere == NULL){
-            DescriptorSetAndPoolVector empty zeroinit;
-            BindGroupCacheMap_put(bgcm, dshandle->layout, empty);
-            maybeAlreadyThere = BindGroupCacheMap_get(bgcm, dshandle->layout);
-            wgvk_assert(maybeAlreadyThere != NULL, "Still null after insert");
-            DescriptorSetAndPoolVector_init(maybeAlreadyThere);
+
+        WGPUBindGroupLayout stillThere = wgpuBindGroupLayoutRelease_withReturn(dshandle->layout);
+        if(stillThere){
+            BindGroupCacheMap* bgcm = &DeviceGetFIFCache(dshandle->device, dshandle->cacheIndex)->bindGroupCache;
+            DescriptorSetAndPool insertValue = {
+                .pool = dshandle->pool,
+                .set = dshandle->set
+            };
+            DescriptorSetAndPoolVector* maybeAlreadyThere = BindGroupCacheMap_get(bgcm, dshandle->layout);
+            if(maybeAlreadyThere == NULL){
+                DescriptorSetAndPoolVector empty zeroinit;
+                BindGroupCacheMap_put(bgcm, dshandle->layout, empty);
+                maybeAlreadyThere = BindGroupCacheMap_get(bgcm, dshandle->layout);
+                wgvk_assert(maybeAlreadyThere != NULL, "Still null after insert");
+                DescriptorSetAndPoolVector_init(maybeAlreadyThere);
+            }
+
+            if(maybeAlreadyThere){
+                DescriptorSetAndPoolVector_push_back(maybeAlreadyThere, insertValue);
+            }
         }
-        
-        if(maybeAlreadyThere){
-            DescriptorSetAndPoolVector_push_back(maybeAlreadyThere, insertValue);
+        else{
+            //dshandle->device->functions.vkFreeDescriptorSets(dshandle->device->device, dshandle->pool, 1, &dshandle->set);
+            dshandle->device->functions.vkDestroyDescriptorPool(dshandle->device->device, dshandle->pool, NULL);
         }
         RL_FREE(dshandle->entries);
 
@@ -4802,7 +4853,10 @@ void resetFenceAndReleaseBuffers(void* fence_, WGPUCommandBufferVector* cBuffers
 void wgpuDeviceRelease(WGPUDevice device){
     ENTRY();
     if(--device->refCount == 0){
-        WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(device->queue->presubmitCache, NULL);
+        WGPUCommandBufferDescriptor cbd = {
+            .label = STRVIEW("PresubmitCache"),
+        };
+        WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(device->queue->presubmitCache, &cbd);
         wgpuCommandEncoderRelease(device->queue->presubmitCache);
         wgpuCommandBufferRelease(cBuffer);
         FIFCache_destroy(&device->fifCache);
@@ -5231,27 +5285,7 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device, const WGPUR
     return pipelineImpl;
     EXIT();
 }
-void wgpuBindGroupLayoutRelease(WGPUBindGroupLayout bglayout){
-    ENTRY();
-    --bglayout->refCount;
-    if(bglayout->refCount == 0){
-        WGPUDevice device = bglayout->device;
-        for(uint32_t i = 0;i < framesInFlight;i++){
-            PerframeCache* fci = DeviceGetFIFCache(bglayout->device, i);
-            DescriptorSetAndPoolVector* dspVector = BindGroupCacheMap_get(&fci->bindGroupCache, bglayout);
-            if(dspVector){
-                for(size_t i = 0;i < dspVector->size;i++){
-                    device->functions.vkDestroyDescriptorPool(device->device, dspVector->data[i].pool, NULL);
-                }
-                BindGroupCacheMap_erase(&fci->bindGroupCache, bglayout);
-            }
-        }
-        device->functions.vkDestroyDescriptorSetLayout(bglayout->device->device, bglayout->layout, NULL);
-        RL_FREE((void*)bglayout->entries);
-        RL_FREE((void*)bglayout);
-    }
-    EXIT();
-}
+
 
 void wgpuTextureRelease(WGPUTexture texture){
     ENTRY();
@@ -5894,8 +5928,10 @@ void wgpuSurfacePresent(WGPUSurface surface){
 void wgpuDeviceTick(WGPUDevice device){
     ENTRY();
     WGPUQueue queue = device->queue;
-    
-    WGPUCommandBuffer buffer = wgpuCommandEncoderFinish(queue->presubmitCache, NULL);
+    WGPUCommandBufferDescriptor cbd = {
+        .label = STRVIEW("PresubmitCache"),
+    };
+    WGPUCommandBuffer buffer = wgpuCommandEncoderFinish(queue->presubmitCache, &cbd);
     wgpuCommandEncoderRelease(queue->presubmitCache);
     wgpuCommandBufferRelease(buffer);
     
@@ -7919,6 +7955,17 @@ void wgpuSurfaceUnconfigure(WGPUSurface surface) {
     }
 
     if(surface->swapchain){
+        for(uint32_t i = 0;i < surface->imagecount;i++){
+            WGPUTexture swapchainTexture = surface->images[i];
+            for(size_t j = 0;j < swapchainTexture->viewCache.current_capacity;j++){
+                if(swapchainTexture->viewCache.table[j].key.format != VK_FORMAT_UNDEFINED){
+                    WGPUTextureView cacheEntry = swapchainTexture->viewCache.table[j].value;
+                    device->functions.vkDestroyImageView(cacheEntry->texture->device->device, cacheEntry->view, NULL);
+                }
+
+                //wgpuTextureViewRelease(swapchainTexture->viewCache.table[j].value);
+            }
+        }
         RL_FREE((void*)surface->images);
         device->functions.vkDestroySwapchainKHR(device->device, surface->swapchain, NULL);
         surface->swapchain = NULL;
