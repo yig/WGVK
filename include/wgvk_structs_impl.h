@@ -2454,6 +2454,7 @@ typedef enum SurfaceImplType{
     SurfaceImplType_WaylandSurface,
     SurfaceImplType_AndroidNativeWindow,
     SurfaceImplType_XCBWindow,
+    SurfaceImplType_DrmPlane,
     SurfaceImplType_Force32 = 0x7FFFFFFF,
 }SurfaceImplType;
 

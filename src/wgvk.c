@@ -36,6 +36,11 @@
 #ifdef _WIN32
     #define SUPPORT_WIN32_SURFACE 1
 #endif
+#if SUPPORT_DRM_SURFACE == 1
+    #define VK_KHR_display 1
+    #define VK_EXT_acquire_drm_display 1
+#endif
+
 #if SUPPORT_XLIB_SURFACE == 1
     #define VK_KHR_xlib_surface 1
 #endif
@@ -296,6 +301,172 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 &ret->surface
             );
             ret->surfaceType = SurfaceImplType_XCBWindow;
+        }break;
+        #endif
+        #if SUPPORT_DRM_SURFACE == 1
+        case WGPUSType_SurfaceSourceDrmPlane:{
+            WGPUSurfaceSourceDrmPlane* drm = (WGPUSurfaceSourceDrmPlane*)descriptor->nextInChain;
+                WGPUAdapter adapter = drm->adapter;
+                VkPhysicalDevice phys = adapter->physicalDevice;
+                {
+                    VkPhysicalDeviceDrmPropertiesEXT drmProps = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT };
+                    VkPhysicalDeviceProperties2 p2 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &drmProps };
+                    vkGetPhysicalDeviceProperties2(phys, &p2);
+                }
+                VkDisplayKHR display = VK_NULL_HANDLE;
+                
+                if (vkGetDrmDisplayEXT) {
+                    VkResult getDrmDisplayResult = vkGetDrmDisplayEXT(phys, drm->drmFd, drm->connectorId, &display);
+                    if (getDrmDisplayResult != VK_SUCCESS) {
+                        display = VK_NULL_HANDLE;
+                    } else if (drm->acquireExclusive && vkAcquireDrmDisplayEXT) {
+                        // Try to acquire exclusive control if requested
+                        VkResult acquireDrmDisplayResult = vkAcquireDrmDisplayEXT(phys, drm->drmFd, display);
+                    }
+                }
+                if (display == VK_NULL_HANDLE) { // This branch is already sus
+                    uint32_t displayCount = 0;
+                    if (vkGetPhysicalDeviceDisplayPropertiesKHR(phys, &displayCount, NULL) != VK_SUCCESS || displayCount == 0) {
+                        return NULL;
+                    }
+                    wgvk_assert(displayCount <= 64, "More than 64 displays not supported");
+                    VkDisplayPropertiesKHR displays[64] = {0};
+                    if (vkGetPhysicalDeviceDisplayPropertiesKHR(phys, &displayCount, displays) != VK_SUCCESS) {
+                        return NULL;
+                    }
+                    // if caller provided a nonzero connectorId but EXT isn’t available
+                    // we can’t reliably map it therefore pick the first display.
+                    display = displays[0].display;
+                }
+                uint32_t modeCount = 64;
+                VkResult getDisplayModeResult = vkGetDisplayModePropertiesKHR(phys, display, &modeCount, NULL);
+                VkDisplayModePropertiesKHR modeProps[64] = {0};
+                getDisplayModeResult |= vkGetDisplayModePropertiesKHR(phys, display, &modeCount, modeProps);
+                if (getDisplayModeResult != VK_SUCCESS){
+                    fprintf(stderr, "Surface creation failed: vkGetDisplayModePropertiesKHR returned %s", vkErrorString(getDisplayModeResult));
+                    return NULL;
+                }
+                else if(modeCount == 0) {
+                    fprintf(stderr, "Surface creation failed: vkGetDisplayModePropertiesKHR returned 0 modes");
+                    return NULL;
+                }
+            
+                uint32_t chosenModeIndex = 0;
+                if (drm->modeSelect == WGPUDrmModeSelect_ByIndex) {
+                    chosenModeIndex = (drm->modeIndex < modeCount) ? drm->modeIndex : 0;
+                } else {
+                    /* Adjust field names if your WGPUDrmModeByGeometry differs */
+                    uint32_t targetW  = drm->byGeometry.width;
+                    uint32_t targetH  = drm->byGeometry.height;
+                    uint32_t targetHz = drm->byGeometry.refreshMilliHz;
+                
+                    uint32_t i;
+                    uint32_t best = 0;
+                    uint32_t bestRefreshDiff = 0xFFFFFFFFu;
+                    int foundExactWH = 0;
+                
+                    for (i = 0; i < modeCount && i < 64; ++i) {
+                        const VkDisplayModeParametersKHR* p = &modeProps[i].parameters;
+                        if (p->visibleRegion.width == targetW && p->visibleRegion.height == targetH) {
+                            if (targetHz == 0) { best = i; foundExactWH = 1; break; }
+                            {
+                                uint32_t hz = p->refreshRate;
+                                uint32_t diff = (hz > targetHz) ? (hz - targetHz) : (targetHz - hz);
+                                if (!foundExactWH || diff < bestRefreshDiff) {
+                                    bestRefreshDiff = diff;
+                                    best = i;
+                                    foundExactWH = 1;
+                                }
+                            }
+                        }
+                    }
+                    chosenModeIndex = foundExactWH ? best : 0;
+                }
+            
+                VkDisplayModeKHR displayMode = modeProps[chosenModeIndex].displayMode;
+                VkDisplayModeParametersKHR modeParams = modeProps[chosenModeIndex].parameters;
+            
+                /* --- Step 3: Pick a display plane that supports this display --- */
+                uint32_t planeCount = 64;
+                VkDisplayPlanePropertiesKHR planeProps[64] = {0};
+                if (vkGetPhysicalDeviceDisplayPlanePropertiesKHR(phys, &planeCount, planeProps) != VK_SUCCESS ||
+                    planeCount == 0) {
+                    break;
+                }
+            
+                uint32_t chosenPlane = 0xFFFFFFFFu;
+            
+                /* Treat drm->planeId as an index hint */
+                if (drm->planeId < planeCount) {
+                    uint32_t supportedCount = 64;
+                    VkDisplayKHR supported[64] = {0};
+                    if (vkGetDisplayPlaneSupportedDisplaysKHR(phys, drm->planeId, &supportedCount, supported) == VK_SUCCESS &&
+                        supportedCount > 0) {
+                        uint32_t si;
+                        for (si = 0; si < supportedCount && si < 64; ++si) {
+                            if (supported[si] == display) { chosenPlane = drm->planeId; break; }
+                        }
+                    }
+                }
+            
+                if (chosenPlane == 0xFFFFFFFFu) {
+                    uint32_t i;
+                    for (i = 0; i < planeCount && i < 64; ++i) {
+                        uint32_t supportedCount = 64;
+                        VkDisplayKHR supported[64] = {0};
+                        if (vkGetDisplayPlaneSupportedDisplaysKHR(phys, i, &supportedCount, supported) != VK_SUCCESS ||
+                            supportedCount == 0) {
+                            continue;
+                        }
+                        {
+                            uint32_t si;
+                            for (si = 0; si < supportedCount && si < 64; ++si) {
+                                if (supported[si] == display) { chosenPlane = i; break; }
+                            }
+                        }
+                        if (chosenPlane != 0xFFFFFFFFu) break;
+                    }
+                }
+            
+                if (chosenPlane == 0xFFFFFFFFu) {
+                    wgvk_assert(false, "No plane supports the display");
+                    break; /* No plane supports the display */
+                }
+            
+                VkDisplayPlaneCapabilities2KHR caps = {
+                    .sType = VK_STRUCTURE_TYPE_DISPLAY_PLANE_CAPABILITIES_2_KHR
+                };
+
+                VkDisplayPlaneInfo2KHR planeInfo2 = {
+                    .sType = VK_STRUCTURE_TYPE_DISPLAY_PLANE_INFO_2_KHR,
+                    .planeIndex = chosenPlane,
+                    .mode = displayMode,
+                };
+                VkResult getDPC = vkGetDisplayPlaneCapabilities2KHR(phys, &planeInfo2, &caps);
+                if(getDPC != VK_SUCCESS){
+                    abort();
+                }
+                /* --- Step 4: Create the display surface --- */
+                VkDisplaySurfaceCreateInfoKHR sci = {0};
+                sci.sType           = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
+                sci.displayMode     = displayMode;
+                sci.planeIndex      = chosenPlane;
+                sci.planeStackIndex = planeProps[chosenPlane].currentStackIndex;
+                sci.transform       = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+                sci.globalAlpha     = 1.0f;
+                sci.alphaMode       = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
+                sci.imageExtent     = modeParams.visibleRegion;
+                VkSurfaceKHR surface = NULL;
+                if (vkCreateDisplayPlaneSurfaceKHR(instance->instance, &sci, NULL, &surface) != VK_SUCCESS) {
+                    wgvk_assert(false, "Surface creation failed");
+                }
+                wgvk_assert(surface, "Surface creation failed");
+                VkBool32 supported = VK_FALSE;
+                vkGetPhysicalDeviceSurfaceSupportKHR(phys, 0, surface, &supported);
+                wgvk_assert(supported, "Created surface is not supported by physicalDevice");
+                ret->surface = surface;
+                ret->surfaceType = SurfaceImplType_DrmPlane;
+
         }break;
         #endif
         default:{
@@ -1061,7 +1232,7 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
     
     VkExtensionProperties* availableExtensions = NULL;
     const char** enabledExtensions = NULL; // Array of pointers to enabled names
-    const uint32_t maxEnabledExtensions = 16;
+    const uint32_t maxEnabledExtensions = 32;
 
 
     if (enumResult != VK_SUCCESS || availableExtensionCount == 0) {
@@ -1103,6 +1274,12 @@ WGPUInstance wgpuCreateInstance(const WGPUInstanceDescriptor* descriptor) {
         }
         int desired = 0;
     }
+    #if SUPPORT_DRM_SURFACE == 1
+        enabledExtensions[enabledExtensionCount++] = "VK_KHR_display";
+        enabledExtensions[enabledExtensionCount++] = "VK_EXT_acquire_drm_display";
+        enabledExtensions[enabledExtensionCount++] = "VK_EXT_direct_mode_display";
+        enabledExtensions[enabledExtensionCount++] = "VK_KHR_get_display_properties2";
+    #endif
     VkInstanceCreateFlags instanceCreateFlags = 0;
     // Handle portability enumeration: Enable it *if* needed and available
     if (needsPortabilityEnumeration) {

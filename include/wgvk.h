@@ -35,6 +35,7 @@ extern "C"{
         char buffer_for_snprintf_sdfsd[4096] = {0};                                                   \
         snprintf(buffer_for_snprintf_sdfsd, 4096, "Internal bug: assertion failed: %s", Message);     \
         if (!(Condition)) {                                                                           \
+            fprintf(stderr, "%s\n", buffer_for_snprintf_sdfsd);                                       \
             rg_trap();                                                                                \
             abort();                                                                                  \
         }                                                                                             \
@@ -257,6 +258,7 @@ typedef enum WGPUSType {
     WGPUSType_BufferAllocatorSelector = 0x10000002,
     WGPUSType_ShaderSourceGLSL = 0x10000003,
     WGPUSType_PrimitiveLineWidthInfo = 0x10000004,
+    WGPUSType_SurfaceSourceDrmPlane = 0x10000005,
 }WGPUSType WGPU_ENUM_ATTRIBUTE;
 
 typedef enum WGPUCallbackMode {
@@ -1037,6 +1039,40 @@ typedef struct WGPUEmscriptenSurfaceSourceCanvasHTMLSelector {
     WGPUChainedStruct chain;
     WGPUStringView selector;
 } WGPUEmscriptenSurfaceSourceCanvasHTMLSelector;
+
+typedef enum WGPUDrmModeSelect {
+    WGPUDrmModeSelect_Default = 0,     // backend picks preferred mode
+    WGPUDrmModeSelect_ByIndex,         // index into the connector’s advertised modes
+    WGPUDrmModeSelect_ByGeometry       // pick by WxH + refresh (milli-Hz)
+} WGPUDrmModeSelect;
+
+typedef struct WGPUDrmModeByGeometry {
+    uint32_t width;
+    uint32_t height;
+    uint32_t refreshMilliHz;           // e.g. 60000 for 60 Hz
+} WGPUDrmModeByGeometry;
+
+// The only job of this struct: let the backend create VkDisplayPlaneSurfaceKHR.
+typedef struct WGPUSurfaceSourceDrmPlane {
+    WGPUChainedStruct chain;
+    WGPUAdapter adapter;
+    int32_t   drmFd;
+    uint32_t  connectorId;
+
+    uint32_t  crtcId;
+    uint32_t  planeId;
+
+    
+    WGPUDrmModeSelect modeSelect;
+    union {
+        uint32_t              modeIndex;
+        WGPUDrmModeByGeometry byGeometry;
+    };
+    
+    WGPUBool acquireExclusive;
+} WGPUSurfaceSourceDrmPlane;
+
+
 
 typedef struct WGPUSurfaceDescriptor{
     WGPUChainedStruct* nextInChain;
