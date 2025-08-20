@@ -352,13 +352,14 @@ WGPUSurface wgpuInstanceCreateSurface(WGPUInstance instance, const WGPUSurfaceDe
                 }
             
                 uint32_t chosenModeIndex = 0;
-                if (drm->modeSelect == WGPUDrmModeSelect_ByIndex) {
-                    chosenModeIndex = (drm->modeIndex < modeCount) ? drm->modeIndex : 0;
+                if (drm->modeSelect.type == WGPUDrmModeSelect_ByIndex) {
+
+                    chosenModeIndex = (drm->modeSelect.index < modeCount) ? drm->modeSelect.index : 0;
                 } else {
                     /* Adjust field names if your WGPUDrmModeByGeometry differs */
-                    uint32_t targetW  = drm->byGeometry.width;
-                    uint32_t targetH  = drm->byGeometry.height;
-                    uint32_t targetHz = drm->byGeometry.refreshMilliHz;
+                    uint32_t targetW  = drm->modeSelect.geometry.width;
+                    uint32_t targetH  = drm->modeSelect.geometry.height;
+                    uint32_t targetHz = drm->modeSelect.geometry.refreshMilliHz;
                 
                     uint32_t i;
                     uint32_t best = 0;

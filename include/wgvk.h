@@ -1040,17 +1040,25 @@ typedef struct WGPUEmscriptenSurfaceSourceCanvasHTMLSelector {
     WGPUStringView selector;
 } WGPUEmscriptenSurfaceSourceCanvasHTMLSelector;
 
-typedef enum WGPUDrmModeSelect {
+typedef enum WGPUDrmModeSelectType {
     WGPUDrmModeSelect_Default = 0,     // backend picks preferred mode
     WGPUDrmModeSelect_ByIndex,         // index into the connector’s advertised modes
     WGPUDrmModeSelect_ByGeometry       // pick by WxH + refresh (milli-Hz)
-} WGPUDrmModeSelect;
+} WGPUDrmModeSelectType;
 
 typedef struct WGPUDrmModeByGeometry {
     uint32_t width;
     uint32_t height;
     uint32_t refreshMilliHz;           // e.g. 60000 for 60 Hz
 } WGPUDrmModeByGeometry;
+
+typedef struct WGPUDrmModeSelect{
+    WGPUDrmModeSelectType type;
+    union{
+        WGPUDrmModeByGeometry geometry;
+        uint32_t index;
+    };
+}WGPUDrmModeSelect;
 
 // The only job of this struct: let the backend create VkDisplayPlaneSurfaceKHR.
 typedef struct WGPUSurfaceSourceDrmPlane {
@@ -1064,10 +1072,6 @@ typedef struct WGPUSurfaceSourceDrmPlane {
 
     
     WGPUDrmModeSelect modeSelect;
-    union {
-        uint32_t              modeIndex;
-        WGPUDrmModeByGeometry byGeometry;
-    };
     
     WGPUBool acquireExclusive;
 } WGPUSurfaceSourceDrmPlane;

@@ -7,7 +7,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
-#include <xf86drm.h>
+#include <drm.h>
 #include <xf86drmMode.h>
 
 #ifndef STRVIEW
@@ -203,7 +203,11 @@ int main(){
         return 1;
     }
     drmModeConnector** connectors = calloc(res->count_connectors, sizeof(drmModeConnector*));
-    int nonZeroModeIndex = -1;
+    
+    int validConnectorIndex = -1;
+    const uint32_t modeIndex = 0;
+    
+    
     for (int i = 0; i < res->count_connectors; i++) {
         connectors[i] = drmModeGetConnector(drmFD, res->connectors[i]);
         drmModeConnector* conn = connectors[i];
@@ -212,18 +216,19 @@ int main(){
         printf("Connector %d: id=%u, type=%s, connected=%d, count_modes: %d\n", i, conn->connector_id, drmModeGetConnectorTypeName(conn->connector_type), conn->connection, conn->count_modes);
         
         if(conn->count_modes > 0){
-            char modesString[8192];
-            char* modesStringp = modesString;
-            for(int mi = 0;mi < conn->count_modes;mi++){
-                modesStringp += snprintf(modesStringp, ((char*)modesString) + sizeof(modesString) - modesStringp, "   Mode[%d] %s: %d x %d@%u\n", mi, conn->modes[mi].name, (int)conn->modes[mi].hdisplay, (int)conn->modes[mi].vdisplay, conn->modes[mi].vrefresh);
-            }
-            nonZeroModeIndex = i;
+            // char modesString[8192];
+            // char* modesStringp = modesString;
+            // for(int mi = 0;mi < conn->count_modes;mi++){
+            //     modesStringp += snprintf(modesStringp, ((char*)modesString) + sizeof(modesString) - modesStringp, "   Mode[%d] %s: %d x %d@%u\n", mi, conn->modes[mi].name, (int)conn->modes[mi].hdisplay, (int)conn->modes[mi].vdisplay, conn->modes[mi].vrefresh);
+            // }
             //puts(modesString);
-            //break;
+
+            validConnectorIndex = i;
+            break;
         }
         //drmModeFreeConnector(conn);
     }
-    if(nonZeroModeIndex == -1){
+    if(validConnectorIndex == -1){
         fprintf(stderr, "No drm connector found with at least one mode");
         exit(1);
     }
@@ -235,9 +240,12 @@ int main(){
             .sType = WGPUSType_SurfaceSourceDrmPlane
         },
         .drmFd = drmFD,
-        .connectorId = connectors[nonZeroModeIndex]->connector_id,
+        .connectorId = connectors[validConnectorIndex]->connector_id,
         .adapter = requestedAdapter,
-        .modeSelect = WGPUDrmModeSelect_ByIndex
+        .modeSelect = {
+            WGPUDrmModeSelect_ByIndex,
+            .index = 0
+        }
     };
 
     WGPUSurfaceDescriptor surfDesc = {
@@ -249,7 +257,7 @@ int main(){
         fprintf(stderr, "[Error] Unable to acquire the desired display, are you running a compositor?\n");
         exit(1);
     }
-    //drmModeFreeConnector(conn);
+    
     
     WGPUSurfaceCapabilities capabilities = {0};
     wgpuSurfaceGetCapabilities(surface, requestedAdapter, &capabilities);
@@ -264,10 +272,10 @@ int main(){
         .format = scFormat,
         .viewFormats = &scFormat,
         .viewFormatCount = 1,
-        .width = 3840,
-        .height = 2160
+        .width = connectors[validConnectorIndex]->modes[0].hdisplay,
+        .height = connectors[validConnectorIndex]->modes[0].vdisplay
     };
-
+    
     wgpuSurfaceConfigure(surface, &surfaceConfiguration);
     
     
