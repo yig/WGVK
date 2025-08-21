@@ -119,15 +119,20 @@ wgpu_base wgpu_init(){
     const char* layernames[] = {"VK_LAYER_KHRONOS_validation"};
     lsel.instanceLayers = layernames;
     lsel.instanceLayerCount = 1;
-    
+    WGPUInstanceFeatureName instanceFeatures[2] = {
+        WGPUInstanceFeatureName_TimedWaitAny,
+        WGPUInstanceFeatureName_ShaderSourceSPIRV,
+    };
     WGPUInstanceDescriptor instanceDescriptor = {
         .nextInChain = 
         #ifdef NDEBUG
-        NULL,
+        NULL
         #else
-        &lsel.chain,
+        &lsel.chain
         #endif
-        .capabilities = {0}
+        ,
+        .requiredFeatures = instanceFeatures,
+        .requiredFeatureCount = 2,
     };
     #else
     WGPUInstanceDescriptor instanceDescriptor = {

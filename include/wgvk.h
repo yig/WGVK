@@ -748,6 +748,13 @@ typedef enum WGPUSurfaceGetCurrentTextureStatus {
     WGPUSurfaceGetCurrentTextureStatus_Force32 = 0x7FFFFFFF
 } WGPUSurfaceGetCurrentTextureStatus WGPU_ENUM_ATTRIBUTE;
 
+typedef enum WGPUInstanceFeatureName {
+    WGPUInstanceFeatureName_TimedWaitAny = 0x00000001,
+    WGPUInstanceFeatureName_ShaderSourceSPIRV = 0x00000002,
+    WGPUInstanceFeatureName_MultipleDevicesPerAdapter = 0x00000003,
+    WGPUInstanceFeatureName_Force32 = 0x7FFFFFFF
+} WGPUInstanceFeatureName WGPU_ENUM_ATTRIBUTE;
+
 typedef enum WGPUFeatureName {
     WGPUFeatureName_DepthClipControl = 0x00000001,
     WGPUFeatureName_Depth32FloatStencil8 = 0x00000002,
@@ -1112,6 +1119,11 @@ typedef struct WGPUInstanceCapabilities {
     size_t timedWaitAnyMaxCount;
 } WGPUInstanceCapabilities;
 
+typedef struct WGPUInstanceLimits {
+    WGPUChainedStruct * nextInChain;
+    size_t timedWaitAnyMaxCount;
+} WGPUInstanceLimits WGPU_STRUCTURE_ATTRIBUTE;
+
 typedef struct WGPUInstanceLayerSelection{
     WGPUChainedStruct chain;
     const char* const* instanceLayers;
@@ -1119,9 +1131,11 @@ typedef struct WGPUInstanceLayerSelection{
 }WGPUInstanceLayerSelection;
 
 typedef struct WGPUInstanceDescriptor {
-    WGPUChainedStruct* nextInChain;
-    WGPUInstanceCapabilities capabilities;
-} WGPUInstanceDescriptor;
+    WGPUChainedStruct * nextInChain;
+    size_t requiredFeatureCount;
+    WGPUInstanceFeatureName const * requiredFeatures;
+    WGPU_NULLABLE WGPUInstanceLimits const * requiredLimits;
+} WGPUInstanceDescriptor WGPU_STRUCTURE_ATTRIBUTE;
 
 typedef struct WGPUBindGroupEntry{
     WGPUChainedStruct* nextInChain;
