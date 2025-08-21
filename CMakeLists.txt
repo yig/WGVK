@@ -109,11 +109,12 @@ if(WGVK_BUILD_WGSL_SUPPORT)
   set(TINT_BUILD_SPV_WRITER ON CACHE BOOL "" FORCE)
   option(TINT_BUILD_WGSL_WRITER "" OFF)
   option(TINT_BUILD_TESTS "" OFF)
+  option(TINT_BUILD_IR_BINARY "" OFF)
   option(TINT_BUILD_GLSL_VALIDATOR "" OFF)
   option(TINT_ENABLE_IR_VALIDATION "" OFF)
   FetchContent_Declare(
     dawn
-    URL https://github.com/manuel5975p/dawn_monorepo/archive/refs/tags/v7281.tar.gz
+    URL https://github.com/manuel5975p/dawn_monorepo/archive/refs/tags/chromium/7369.tar.gz
     DOWNLOAD_EXTRACT_TIMESTAMP True
   )
   FetchContent_MakeAvailable(dawn)
