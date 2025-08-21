@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <external/incbin.h>
 #include <string.h>
+#include <stdlib.h>
 #ifndef STRVIEW
     #define STRVIEW(X) (WGPUStringView){X, sizeof(X) - 1}
 #endif
@@ -68,38 +69,9 @@ void deviceCallbackFunction(
     *((WGPUDevice*)userdata1) = device;
 }
 
-void reflectionCallback(WGPUReflectionInfoRequestStatus status, const WGPUReflectionInfo* reflectionInfo, void* userdata1, void* userdata2){
-    for(uint32_t i = 0;i < reflectionInfo->globalCount;i++){
-
-        const char* typedesc = NULL;
-
-        if(reflectionInfo->globals[i].buffer.type != WGPUBufferBindingType_BindingNotUsed){
-            typedesc = "buffer";
-        }
-        if(reflectionInfo->globals[i].texture.sampleType != WGPUTextureSampleType_BindingNotUsed){
-            typedesc = "texture";
-        }
-        if(reflectionInfo->globals[i].sampler.type != WGPUSamplerBindingType_BindingNotUsed){
-            typedesc = "sampler";
-        }
-        
-
-        char namebuffer[256] = {0};
-        
-        const WGPUGlobalReflectionInfo* toBePrinted = reflectionInfo->globals + i;
-
-        memcpy(namebuffer, toBePrinted->name.data, toBePrinted->name.length);
-        printf("Name: %s, location: %u, type: %s", namebuffer, toBePrinted->binding, typedesc);
-        if(reflectionInfo->globals[i].buffer.type != WGPUBufferBindingType_BindingNotUsed){
-            printf(", minBindingSize = %d", (int)toBePrinted->buffer.minBindingSize);
-        }
-        printf("\n");
-    }
-}
-
 void createPipelineAsyncCallback(WGPUCreatePipelineAsyncStatus status, WGPUComputePipeline cpl, WGPUStringView message, void* userdata1, void* userdata2){
     if(status == WGPUCreatePipelineAsyncStatus_Success){
-        WGPUComputePipeline* dcpl = (WGPUComputePipeline*)userdata1;
+        _Atomic(WGPUComputePipeline)* dcpl = (_Atomic(WGPUComputePipeline)*)userdata1;
         *dcpl = cpl;
     }
 }
@@ -120,7 +92,7 @@ int main(){
         #ifdef NDEBUG
         NULL
         #else
-        &lsel.chain
+        NULL//&lsel.chain
         #endif
         ,
         .capabilities = {0}
@@ -189,23 +161,7 @@ int main(){
     
     WGPUShaderModule computeModule = wgpuDeviceCreateShaderModule(device, &computeModuleDesc);
     
-    WGPUReflectionInfoCallbackInfo reflectionCallbackInfo = {
-        .nextInChain = NULL,
-        .mode = WGPUCallbackMode_WaitAnyOnly,
-        .callback = reflectionCallback,
-        .userdata1 = NULL,
-        .userdata2 = NULL
-    };
 
-    WGPUFuture computeReflectionFuture = wgpuShaderModuleGetReflectionInfo(computeModule, reflectionCallbackInfo);
-
-    WGPUFutureWaitInfo reflectionWaitInfo[1] = {
-        {
-            .future =   computeReflectionFuture,
-            .completed = 0
-        },
-    };
-    wgpuInstanceWaitAny(instance, 1, reflectionWaitInfo, 1 << 30);
     WGPUComputePipelineDescriptor cplDesc = {
         .nextInChain = NULL,
         .label = STRVIEW("Kopmute paipline"),
@@ -239,16 +195,29 @@ int main(){
     });
 
     cplDesc.layout = pllayout;
-    WGPUComputePipeline cpl = NULL;
-    WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo = {
-        .callback = createPipelineAsyncCallback,
-        .mode = WGPUCallbackMode_AllowSpontaneous,
-        .userdata1 = &cpl,
-    };
-    WGPUFuture cplFuture = wgpuDeviceCreateComputePipelineAsync(device, &cplDesc, callbackInfo);
-    do{
+
+    const size_t plCount = 100;
+    _Atomic(WGPUComputePipeline)* cpl = (_Atomic(WGPUComputePipeline)*)calloc(plCount, sizeof(_Atomic(WGPUComputePipeline)));
+    WGPUCreateComputePipelineAsyncCallbackInfo* callbackInfo = (WGPUCreateComputePipelineAsyncCallbackInfo*)calloc(plCount, sizeof(WGPUCreateComputePipelineAsyncCallbackInfo));
+
+    for(uint32_t i = 0;i < plCount;i++){
+        callbackInfo[i] = (WGPUCreateComputePipelineAsyncCallbackInfo){
+            .callback = createPipelineAsyncCallback,
+            .mode = WGPUCallbackMode_AllowSpontaneous,
+            .userdata1 = cpl + i,
+        };
+        WGPUFuture cplFuture = wgpuDeviceCreateComputePipelineAsync(device, &cplDesc, callbackInfo[i]);
+    }
+
+    
+    for(;;){
+        unsigned allNonnull = 1;
+        for(uint32_t i = 0;i < plCount;i++){
+            allNonnull &= ((cpl[i] != NULL) ? 1u : 0u);
+        }
+        if(allNonnull)break;
         thrd_yield();
-    }while(cpl == NULL);
+    }
     //WGPUComputePipeline cpl = wgpuDeviceCreateComputePipeline(device, &cplDesc);
     
     WGPUBuffer stbuf = wgpuDeviceCreateBuffer(device, &(WGPUBufferDescriptor){
@@ -283,7 +252,7 @@ int main(){
 
     WGPUCommandEncoder cenc = wgpuDeviceCreateCommandEncoder(device, NULL);
     WGPUComputePassEncoder cpenc = wgpuCommandEncoderBeginComputePass(cenc, NULL);
-    wgpuComputePassEncoderSetPipeline(cpenc, cpl);
+    wgpuComputePassEncoderSetPipeline(cpenc, cpl[0]);
     wgpuComputePassEncoderSetBindGroup(cpenc, 0, group, 0, NULL);
     wgpuComputePassEncoderDispatchWorkgroups(cpenc, 16, 1, 1);
     wgpuComputePassEncoderEnd(cpenc);
@@ -304,7 +273,9 @@ int main(){
     wgpuBufferRelease(stbuf);
     
     wgpuShaderModuleRelease(computeModule);
-    wgpuComputePipelineRelease(cpl);
+    for(uint32_t i = 0;i < plCount;i++){
+        wgpuComputePipelineRelease(cpl[i]);
+    }
     wgpuBindGroupRelease(group);
     wgpuBindGroupLayoutRelease(layout);
     wgpuPipelineLayoutRelease(pllayout);
@@ -312,6 +283,5 @@ int main(){
     wgpuDeviceRelease(device);
     wgpuAdapterRelease(requestedAdapter);
     wgpuInstanceRelease(instance);
-
     return 0;
 }

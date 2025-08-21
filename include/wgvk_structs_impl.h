@@ -2082,7 +2082,7 @@ typedef struct WGPUDeviceImpl{
     RenderPassCache renderPassCache;
     WGPUUncapturedErrorCallbackInfo uncapturedErrorCallbackInfo;
     FenceCache fenceCache;
-    wgvk_thread_pool_t thread_pool;
+    wgvk_thread_pool_t* thread_pool;
     struct VolkDeviceTable functions;
 }WGPUDeviceImpl;
 

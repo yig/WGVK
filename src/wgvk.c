@@ -1879,7 +1879,7 @@ WGPUDevice wgpuAdapterCreateDevice(WGPUAdapter adapter, const WGPUDeviceDescript
     
     vmaCreatePool(retDevice->allocator, &vpci, &retDevice->aligned_hostVisiblePool);
     #endif
-    
+    retDevice->thread_pool = wgvk_thread_pool_create(4);
     wgvkAllocator_init(&retDevice->builtinAllocator, adapter->physicalDevice, retDevice, &retDevice->functions);
     {
 
@@ -5034,6 +5034,7 @@ void wgpuDeviceRelease(WGPUDevice device){
         WGPUCommandBufferDescriptor cbd = {
             .label = STRVIEW("PresubmitCache"),
         };
+        wgvk_thread_pool_destroy(device->thread_pool);
         WGPUCommandBuffer cBuffer = wgpuCommandEncoderFinish(device->queue->presubmitCache, &cbd);
         wgpuCommandEncoderRelease(device->queue->presubmitCache);
         wgpuCommandBufferRelease(cBuffer);
@@ -7486,7 +7487,8 @@ typedef struct CreateComputePipelineAsyncState{
 
 static void* wgpuDeviceCreateComputePipelineAsync_sync(void* _crps){
     CreateComputePipelineAsyncState* crps = (CreateComputePipelineAsyncState*)_crps;
-    crps->computePipeline = wgpuDeviceCreateComputePipeline(crps->device, &crps->cpdesc);
+    WGPUComputePipeline temporary = wgpuDeviceCreateComputePipeline(crps->device, &crps->cpdesc);
+    crps->computePipeline = temporary;
     if(crps->callbackInfo.mode == WGPUCallbackMode_AllowSpontaneous){
         if(crps->computePipeline){
             crps->callbackInfo.callback(WGPUCreatePipelineAsyncStatus_Success, crps->computePipeline, (WGPUStringView){"", 0}, crps->callbackInfo.userdata1, crps->callbackInfo.userdata2);
@@ -7510,7 +7512,7 @@ WGPUFuture wgpuDeviceCreateComputePipelineAsync(WGPUDevice device, WGPUComputePi
     crps->device = device;
     crps->cpdesc = *descriptor;
     if(callbackInfo.mode == WGPUCallbackMode_AllowSpontaneous){
-        wgvk_thread_create(&crps->thread, wgpuDeviceCreateComputePipelineAsync_sync, (void*)crps);
+        wgvk_job_enqueue(device->thread_pool, wgpuDeviceCreateComputePipelineAsync_sync, (void*)crps);
     }
     return (WGPUFuture){
         .id = futureID
