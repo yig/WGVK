@@ -178,16 +178,20 @@ int main(){
     lsel.instanceLayers = layernames;
     lsel.instanceLayerCount = 1;
     #endif
+    WGPUInstanceFeatureName instanceFeatures[2] = {
+        WGPUInstanceFeatureName_TimedWaitAny,
+        WGPUInstanceFeatureName_ShaderSourceSPIRV,
+    };
     WGPUInstanceDescriptor instanceDescriptor = {
-        .nextInChain =
-        #if defined(NDEBUG) || defined(EMSCRIPTEN)
-        NULL,
+        .nextInChain = 
+        #ifdef NDEBUG
+        NULL
         #else
-        &lsel.chain,
+        &lsel.chain
         #endif
-        .capabilities = {
-            .timedWaitAnyEnable = 1
-        }
+        ,
+        .requiredFeatures = instanceFeatures,
+        .requiredFeatureCount = 2,
     };
 
     WGPUInstance instance = wgpuCreateInstance(&instanceDescriptor);
