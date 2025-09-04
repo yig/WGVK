@@ -5940,7 +5940,11 @@ void wgpuRaytracingPassEncoderEnd(WGPURaytracingPassEncoder commandEncoder){
     recordVkCommands(commandEncoder->cmdEncoder, commandEncoder->device, &commandEncoder->bufferedCommands, NULL);
     EXIT();
 }
-
+void wgpuFenceReset(WGPUFence fence){
+    wgvk_assert(atomic_load_explicit(&fence->state, memory_order_acquire) == WGPUFenceState_Finished, "Fence must be finished");
+    fence->device->functions.vkResetFences(fence->device->device, 1, &fence->fence);
+    atomic_store_explicit(&fence->state, memory_order_release, WGPUFenceState_Reset);
+}
 
 
 void resetFenceAndReleaseBuffers(void* fence_, WGPUCommandBufferVector* cBuffers, void* wgpudevice){

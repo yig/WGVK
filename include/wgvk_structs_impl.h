@@ -1878,10 +1878,14 @@ typedef struct WGPUSamplerImpl{
     WGPUDevice device;
 }WGPUSamplerImpl;
 
+/**
+ * @brief Callback pointer with maybe owned userdata
+ * freeUserData can be null -> no free required
+ */
 typedef struct CallbackWithUserdata{
     void(*callback)(void*);
     void* userdata;
-    void(*freeUserData)(void*);
+    WGPU_NULLABLE void(*freeUserData)(void*);
 }CallbackWithUserdata;
 
 DEFINE_VECTOR(static inline, CallbackWithUserdata, CallbackWithUserdataVector);
