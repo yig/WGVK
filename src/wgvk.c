@@ -2221,66 +2221,104 @@ void wgpuQueueWriteTexture(WGPUQueue queue, const WGPUTexelCopyTextureInfo* dest
     EXIT();
 }
 
-
 WGPUFence wgpuDeviceCreateFence(WGPUDevice device){
     ENTRY();
     WGPUFence fence = RL_CALLOC(1, sizeof(WGPUFenceImpl));
     fence->refCount = 1;
     fence->device = device;
     CallbackWithUserdataVector_init(&fence->callbacksOnWaitComplete);
+    
+    // Initialize the new synchronization primitives
+    fence->wait_mutex = wgvk_mutex_create(wgvk_locktype_kernel);
+    fence->wait_cond = wgvk_cond_create(wgvk_locktype_kernel);
+    if (!fence->wait_mutex || !fence->wait_cond) {
+        // Handle initialization failure
+        if (fence->wait_mutex) wgvk_mutex_destroy(fence->wait_mutex);
+        if (fence->wait_cond) wgvk_cond_destroy(fence->wait_cond);
+        RL_FREE(fence);
+        return NULL;
+    }
+
     VkFenceCreateInfo createInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fence->fence = FenceCache_GetFence(&device->fenceCache);
+    // The fence starts in a "reset" state, ready to be used.
+    atomic_init(&fence->state, WGPUFenceState_Reset);
     return fence;
     EXIT();
 }
-void wgpuFencesWait(const WGPUFence* fences, uint32_t fenceCount, uint64_t timeoutNS){
+
+static inline void wgpuFenceRunWaitCompleteCallbacks(WGPUFence fence) {
+    const size_t n = fence->callbacksOnWaitComplete.size;
+    for (size_t i = 0; i < n; i++) {
+        CallbackWithUserdata cb = fence->callbacksOnWaitComplete.data[i];
+        if (cb.callback) {
+            cb.callback(cb.userdata);
+        }
+    }
+}
+
+void wgpuFenceWait(WGPUFence fence, uint64_t timeoutNS) {
     ENTRY();
-    if(fenceCount){
-        if(fenceCount <= 128){
-            VkFence vkFences[128];
-            uint32_t actualFenceCount = 0;
-            for(uint32_t i = 0;i < fenceCount;i++){
-                if(fences[i]->state == WGPUFenceState_InUse){
-                    vkFences[actualFenceCount++] = fences[i]->fence;
-                }
-            }
-            VkResult fenceWaitResult = fences[0]->device->functions.vkWaitForFences(fences[0]->device->device, actualFenceCount, vkFences, VK_TRUE, timeoutNS);
-            wgvk_assert(fenceWaitResult == VK_SUCCESS, "Waiting for fence failed");
+
+    if (!fence) {
+        EXIT();
+        return;
+    }
+
+    if (atomic_load_explicit(&fence->state, memory_order_acquire) == WGPUFenceState_Finished) {
+        EXIT();
+        return;
+    }
+
+    bool is_designated_waiter = false;
+    
+    // Attempt to become the designated waiter. This is an atomic operation.
+    WGPUFenceState expected_state = WGPUFenceState_InUse;
+    if (atomic_compare_exchange_strong_explicit(&fence->state, &expected_state, WGPUFenceState_Waiting, memory_order_acq_rel, memory_order_acquire)) {
+        is_designated_waiter = true;
+    }
+
+    if (is_designated_waiter) {
+        VkResult waitResult = fence->device->functions.vkWaitForFences(
+            fence->device->device, 1, &fence->fence, VK_TRUE, timeoutNS);
+        
+        wgvk_assert(waitResult == VK_SUCCESS || waitResult == VK_TIMEOUT, "vkWaitForFences returned an unexpected error.");
+
+        // Lock the mutex to safely update state and signal followers.
+        wgvk_mutex_lock(fence->wait_mutex);
+        if (waitResult == VK_SUCCESS) {
+            wgpuFenceRunWaitCompleteCallbacks(fence);
+            atomic_store_explicit(&fence->state, WGPUFenceState_Finished, memory_order_release);
+        } else { // Timeout occurred
+            // Revert state to InUse so another thread can attempt to wait again.
+            atomic_store_explicit(&fence->state, WGPUFenceState_InUse, memory_order_release);
         }
-        else{
-            VkFence* vkFences = (VkFence*)RL_CALLOC(fenceCount, sizeof(VkFence));
-            uint32_t actualFenceCount = 0;
-            for(uint32_t i = 0;i < fenceCount;i++){
-                if(fences[i]->state == WGPUFenceState_InUse){
-                    vkFences[actualFenceCount++] = fences[i]->fence;
-                }
-            }
-            VkResult fenceWaitResult = fences[0]->device->functions.vkWaitForFences(fences[0]->device->device, actualFenceCount, vkFences, VK_TRUE, timeoutNS);
-            wgvk_assert(fenceWaitResult == VK_SUCCESS, "Waiting for fence failed");
-            RL_FREE((void*)vkFences);
+        // Wake up ALL follower threads that might be waiting on the condition variable.
+        wgvk_cond_broadcast(fence->wait_cond);
+        wgvk_mutex_unlock(fence->wait_mutex);
+
+    } else {
+        wgvk_mutex_lock(fence->wait_mutex);
+        while (atomic_load_explicit(&fence->state, memory_order_acquire) != WGPUFenceState_Finished) {
+            wgvk_cond_wait(fence->wait_cond, fence->wait_mutex);
         }
-        for(uint32_t i = 0;i < fenceCount;i++){
-            if(fences[i]->state == WGPUFenceState_InUse){
-                for(uint32_t ci = 0;ci < fences[i]->callbacksOnWaitComplete.size;ci++){
-                    fences[i]->callbacksOnWaitComplete.data[ci].callback(fences[i]->callbacksOnWaitComplete.data[ci].userdata);
-                }
-                fences[i]->state = WGPUFenceState_Finished;
-            }
+        wgvk_mutex_unlock(fence->wait_mutex);
+    }
+
+    EXIT();
+}
+
+void wgpuFencesWait(const WGPUFence* fences, uint32_t fenceCount, uint64_t timeoutNS) {
+    ENTRY();
+    if (!fences || fenceCount == 0) { EXIT(); return; }
+    for (uint32_t i = 0; i < fenceCount; i++) {
+        if (fences[i]) {
+            wgpuFenceWait(fences[i], timeoutNS);
         }
     }
     EXIT();
 }
-RGAPI void wgpuFenceWait(WGPUFence fence, uint64_t timeoutNS){
-    ENTRY();
-    VkResult waitResult = fence->device->functions.vkWaitForFences(fence->device->device, 1, &fence->fence, VK_TRUE, timeoutNS);
-    if(waitResult == VK_SUCCESS){
-        fence->state = WGPUFenceState_Finished;
-        for(size_t i = 0;i < fence->callbacksOnWaitComplete.size;i++){
-            fence->callbacksOnWaitComplete.data[i].callback(fence->callbacksOnWaitComplete.data[i].userdata);
-        }
-    }
-    EXIT();
-}
+
 void wgpuFenceAttachCallback(WGPUFence fence, void(*callback)(void*), void* userdata){
     ENTRY();
     CallbackWithUserdataVector_push_back(&fence->callbacksOnWaitComplete, (CallbackWithUserdata){
@@ -2294,12 +2332,16 @@ void wgpuFenceAddRef(WGPUFence fence){
     ++fence->refCount;
     EXIT();
 }
+
 void wgpuFenceRelease(WGPUFence fence){
     ENTRY();
     wgvk_assert(fence->refCount > 0, "refCount already zero");
     if(--fence->refCount == 0){
+        wgvk_mutex_destroy(fence->wait_mutex);
+        wgvk_cond_destroy(fence->wait_cond);
+
         FenceCache_PutFence(&fence->device->fenceCache, fence->fence);
-        for(uint32_t i = 0;i < CallbackWithUserdataVector_size(&fence->callbacksOnWaitComplete);i++){
+        for(uint32_t i = 0; i < CallbackWithUserdataVector_size(&fence->callbacksOnWaitComplete); i++){
             CallbackWithUserdata* cbu = CallbackWithUserdataVector_get(&fence->callbacksOnWaitComplete, i);
             if(cbu->freeUserData){
                 cbu->freeUserData(cbu->userdata);
@@ -2388,8 +2430,8 @@ WGPUTexture wgpuDeviceCreateTexture(WGPUDevice device, const WGPUTextureDescript
     ret->mipLevels = descriptor->mipLevelCount;
     ret->memory = imageMemory;
     Texture_ViewCache_init(&ret->viewCache);
-    return ret;
     EXIT();
+    return ret;
 }
 
 static inline uint32_t descriptorTypeContiguous(VkDescriptorType type){
@@ -5068,7 +5110,7 @@ void wgpuQueueRelease                         (WGPUQueue queue){
     EXIT();
 }
 
-WGPUComputePipeline wgpuDeviceCreateComputePipeline(WGPUDevice device, WGPUComputePipelineDescriptor const * descriptor){
+WGPUComputePipeline wgpuDeviceCreateComputePipeline(WGPUDevice device, const WGPUComputePipelineDescriptor* descriptor){
     ENTRY();
     WGPUComputePipeline ret = RL_CALLOC(1, sizeof(WGPUComputePipelineImpl));
     ret->device = device;
@@ -5099,7 +5141,12 @@ WGPUComputePipeline wgpuDeviceCreateComputePipeline(WGPUDevice device, WGPUCompu
         0,
         0
     };
-    device->functions.vkCreateComputePipelines(device->device, NULL, 1, &cpci, NULL, &ret->computePipeline);
+    device->functions.vkCreateComputePipelines(
+        device->device,
+        NULL,
+        1, &cpci,
+        NULL,
+        &ret->computePipeline);
     ret->layout = descriptor->layout;
     wgpuPipelineLayoutAddRef(ret->layout);
     return ret;
@@ -7491,8 +7538,9 @@ typedef struct CreateComputePipelineAsyncState{
 
 static void* wgpuDeviceCreateComputePipelineAsync_sync(void* _crps){
     CreateComputePipelineAsyncState* crps = (CreateComputePipelineAsyncState*)_crps;
-    WGPUComputePipeline temporary = wgpuDeviceCreateComputePipeline(crps->device, &crps->cpdesc);
-    crps->computePipeline = temporary;
+    WGPUDevice device = crps->device;
+    WGPUComputePipeline temporary = wgpuDeviceCreateComputePipeline(device, &crps->cpdesc);
+    atomic_store_explicit(&crps->computePipeline, temporary, memory_order_release);
     if(crps->callbackInfo.mode == WGPUCallbackMode_AllowSpontaneous){
         if(crps->computePipeline){
             crps->callbackInfo.callback(WGPUCreatePipelineAsyncStatus_Success, crps->computePipeline, (WGPUStringView){"", 0}, crps->callbackInfo.userdata1, crps->callbackInfo.userdata2);
@@ -7899,19 +7947,92 @@ void wgpuQuerySetRelease(WGPUQuerySet querySet) {
 }
 
 
-typedef struct QueueOnSubmittedWorkDoneState{
-    WGPUQueueWorkDoneCallbackInfo callbackInfo;
+static void processWorkDoneFuture(void* userdata) {
+    WorkDoneFutureState* state = (WorkDoneFutureState*)userdata;
 
-}QueueOnSubmittedWorkDoneState;
+    wgpuFenceWait(state->fence, UINT64_MAX);
 
+    WGPUFenceState finalState = atomic_load_explicit(&state->fence->state, memory_order_acquire);
+    
+    if (finalState == WGPUFenceState_Finished) {
+        if (state->callbackInfo.callback) {
+            state->callbackInfo.callback(WGPUQueueWorkDoneStatus_Success, 
+                                         state->callbackInfo.userdata1, 
+                                         state->callbackInfo.userdata2);
+        }
+    } else {
+        // Something went terribly wrong
+        if (state->callbackInfo.callback) {
+            state->callbackInfo.callback(WGPUQueueWorkDoneStatus_Error, 
+                                         state->callbackInfo.userdata1, 
+                                         state->callbackInfo.userdata2);
+        }
+    }
+}
+
+static void freeWorkDoneFutureState(void* userdata) {
+    if (!userdata) return;
+    WorkDoneFutureState* state = (WorkDoneFutureState*)userdata;
+    
+    wgpuFenceRelease(state->fence);
+    
+    RL_FREE(state);
+}
+
+// The main implementation
 WGPUFuture wgpuQueueOnSubmittedWorkDone(WGPUQueue queue, WGPUQueueWorkDoneCallbackInfo callbackInfo) {
     ENTRY();
+
+    WGPUFence fence = wgpuDeviceCreateFence(queue->device);
+    if (!fence) {
+        if (callbackInfo.callback) {
+            callbackInfo.callback(WGPUQueueWorkDoneStatus_Error, callbackInfo.userdata1, callbackInfo.userdata2);
+        }
+        return (WGPUFuture){0};
+    }
+
     
-    //wgpuFenceWait;
+    // TODO: This function works correctly as-is, but it is suboptimal so submit an empty batch
+    // Just to get a fence. One could also reuse the latest fence used from that queue
+    const VkSubmitInfo submitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 0,    // No command buffers
+        .pCommandBuffers = NULL,
+        .waitSemaphoreCount = 0,
+        .signalSemaphoreCount = 0,
+    };
+
+    VkResult result = queue->device->functions.vkQueueSubmit(queue->graphicsQueue, 1, &submitInfo, fence->fence);
+
+    if (result != VK_SUCCESS) {
+        wgpuFenceRelease(fence);
+        if (callbackInfo.callback) {
+            callbackInfo.callback(WGPUQueueWorkDoneStatus_Error, callbackInfo.userdata1, callbackInfo.userdata2);
+        }
+        return (WGPUFuture){0};
+    }
+    
+    atomic_store_explicit(&fence->state, WGPUFenceState_InUse, memory_order_release);
+    WorkDoneFutureState* futureState = RL_CALLOC(1, sizeof(WorkDoneFutureState));
+    futureState->fence = fence;
+    futureState->callbackInfo = callbackInfo;
+    futureState->device = queue->device;
+
+    // 4. Create and register the WGPUFuture.
+    WGPUInstance instance = queue->device->adapter->instance;
+    WGPUFutureImpl futureImpl = {
+        .userdataForFunction = futureState,
+        .functionCalledOnWaitAny = processWorkDoneFuture,
+        .freeUserData = freeWorkDoneFutureState
+    };
+    
+    uint64_t futureID = atomic_fetch_add_explicit(&instance->currentFutureId, 1, memory_order_relaxed);
+    FutureIDMap_put(&instance->g_futureIDMap, futureID, futureImpl);
     
     EXIT();
-    return (WGPUFuture){0};
+    return (WGPUFuture){ .id = futureID };
 }
+
 void wgpuQueueSetLabel(WGPUQueue queue, WGPUStringView label) {
     ENTRY();
 

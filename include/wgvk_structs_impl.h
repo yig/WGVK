@@ -1898,12 +1898,23 @@ typedef enum WGPUFenceState {
     WGPUFenceState_Force32 = 0x7FFFFFFF,
 } WGPUFenceState;
 
+typedef struct WorkDoneFutureState {
+    WGPUFence fence;                             // The fence tracking the work completion.
+    WGPUQueueWorkDoneCallbackInfo callbackInfo;  // The user's callback and data.
+    WGPUDevice device;                           // The device context.
+} WorkDoneFutureState;
+
 typedef struct WGPUFenceImpl {
     VkFence fence;
-    Atomar(WGPUFenceState) state;
+    Atomar(WGPUFenceState) state; 
     WGPUDevice device;
     refcount_type refCount;
     CallbackWithUserdataVector callbacksOnWaitComplete;
+
+    // Required to handle multiple threads trying to wait
+    // Only one thread will wait, the others will be stalled artifically until the waiter is done
+    wgvk_mutex_t* wait_mutex;
+    wgvk_cond_t*  wait_cond;
 } WGPUFenceImpl;
 
 typedef struct PendingCommandBufferListRef{
