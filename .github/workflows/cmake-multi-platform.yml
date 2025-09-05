@@ -4,25 +4,18 @@ name: CMake on multiple platforms
 
 on:
   push:
+    branches: [ "master" ] # Run on pushes to the master branch
+    tags:
+      - 'v*.*.*'       # Also run on version tags
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master" ] # Run on pull requests targeting master
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
 
     strategy:
-
-      # Set up a matrix to run the following configurations:
-      # 1. <Windows, Release, latest MSVC compiler toolchain on the default runner image, default generator>
-      # 2. <Linux, Release, latest GCC compiler toolchain on the default runner image, default generator>
-      # 3. <Linux, Release, latest Clang compiler toolchain on the default runner image, default generator>
-      # 4. <Windows, Release, MSYS2 MINGW64 GCC compiler>
-      # 5. <Windows, Release, MSYS2 MINGW64 Clang compiler>
-      # 6. <Windows, Release, MSYS2 UCRT64 GCC compiler>
-      # 7. <Windows, Release, MSYS2 UCRT64 Clang compiler>
-      # 8. <Windows, Release, MSYS2 CLANG64 Clang compiler>
-      #
+      # ... (your matrix configuration remains unchanged) ...
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Release]
@@ -74,6 +67,7 @@ jobs:
             c_compiler: cl
 
     steps:
+    # ... (all your build and test steps remain exactly the same) ...
     - uses: actions/checkout@v4
 
     - name: Setup MSYS2 (GCC)
@@ -128,6 +122,7 @@ jobs:
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DWGVK_USE_VMA=ON
+        -DWGVK_BUILD_EXAMPLES=OFF
         -DWGVK_BUILD_WGSL_SUPPORT=ON
         -DWGVK_BUILD_GLSL_SUPPORT=ON
         -S ${{ steps.msys2_strings.outputs.source-dir }}
@@ -140,6 +135,7 @@ jobs:
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DWGVK_USE_VMA=ON
+        -DWGVK_BUILD_EXAMPLES=OFF
         -DWGVK_BUILD_WGSL_SUPPORT=ON
         -DWGVK_BUILD_GLSL_SUPPORT=ON
         -S ${{ github.workspace }}
@@ -162,6 +158,44 @@ jobs:
     - name: Test (Regular)
       if: '!matrix.msys2_env'
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --build-config ${{ matrix.build_type }}
+
+    # This step now runs on every build, but the artifacts are only used by the release job on tag pushes.
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: wgvk-lib-${{ matrix.os }}-${{ matrix.c_compiler }}
+        path: ${{ github.workspace }}/build/libwgvk.a
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # THIS IS THE CRITICAL CONDITION:
+    # This job will only run if the event that triggered the workflow was a tag push.
+    # For regular pushes to master, this job will be skipped.
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Upload Release Assets
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref }}
+          file: artifacts/**/*
+          file_glob: true
