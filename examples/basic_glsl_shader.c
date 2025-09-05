@@ -10,31 +10,32 @@
 
 
 // The WGSL shader source remains the same.
-const char vertexSource[] = R"(#version 450
+const char vertexSource[] = 
+"#version 450\n"
+"\n"
+"layout(location = 0) in vec2 position;\n"
+"layout(location = 1) in vec2 uv;\n"
+"\n"
+"layout(location = 0) out vec2 out_uv;\n"
+"\n"
+"void main() {\n"
+"    gl_Position = vec4(position.x, position.y, 0.0, 1.0);\n"
+"    out_uv = uv;\n"
+"}\n";
 
-layout(location = 0) in vec2 position;
-layout(location = 1) in vec2 uv;
-
-layout(location = 0) out vec2 out_uv;
-
-void main() {
-    gl_Position = vec4(position.x, position.y, 0.0, 1.0);
-    out_uv = uv;
-})";
-
-const char fragmentSource[] = R"(#version 450
-
-layout(location = 0) in vec2 in_uv;
-
-layout(location = 0) out vec4 out_color;
-
-layout(binding = 0) uniform texture2D colDiffuse;
-layout(binding = 1) uniform sampler grsampler;
-
-void main() {
-    out_color = texture(sampler2D(colDiffuse, grsampler), in_uv);
-}
-)";
+const char fragmentSource[] = 
+"#version 450\n"
+"\n"
+"layout(location = 0) in vec2 in_uv;\n"
+"\n"
+"layout(location = 0) out vec4 out_color;\n"
+"\n"
+"layout(binding = 0) uniform texture2D colDiffuse;\n"
+"layout(binding = 1) uniform sampler grsampler;\n"
+"\n"
+"void main() {\n"
+"    out_color = texture(sampler2D(colDiffuse, grsampler), in_uv);\n"
+"}\n";
 
 typedef struct {
     wgpu_base base;

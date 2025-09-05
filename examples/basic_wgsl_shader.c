@@ -8,34 +8,33 @@
 
 
 // The WGSL shader source remains the same.
-const char wgslSource[] = R"(
-override brightness = 0.0;
-struct VertexInput {
-    @location(0) position: vec2f,
-    @location(1) uv: vec2f
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f
-};
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
-    out.position = vec4f(in.position.x, in.position.y, 0.0f, 1.0f);
-    out.uv = in.uv;
-    return out;
-}
-
-@group(0) @binding(0) var colDiffuse: texture_2d<f32>;
-@group(0) @binding(1) var grsampler: sampler;
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return textureSample(colDiffuse, grsampler, in.uv) * brightness;
-}
-)";
+const char wgslSource[] = 
+"override brightness = 0.0;\n"
+"struct VertexInput {\n"
+"    @location(0) position: vec2f,\n"
+"    @location(1) uv: vec2f\n"
+"};\n"
+"\n"
+"struct VertexOutput {\n"
+"    @builtin(position) position: vec4f,\n"
+"    @location(0) uv: vec2f\n"
+"};\n"
+"\n"
+"@vertex\n"
+"fn vs_main(in: VertexInput) -> VertexOutput {\n"
+"    var out: VertexOutput;\n"
+"    out.position = vec4f(in.position.x, in.position.y, 0.0f, 1.0f);\n"
+"    out.uv = in.uv;\n"
+"    return out;\n"
+"}\n"
+"\n"
+"@group(0) @binding(0) var colDiffuse: texture_2d<f32>;\n"
+"@group(0) @binding(1) var grsampler: sampler;\n"
+"\n"
+"@fragment\n"
+"fn fs_main(in: VertexOutput) -> @location(0) vec4f {\n"
+"    return textureSample(colDiffuse, grsampler, in.uv) * brightness;\n"
+"}\n";
 
 typedef struct {
     wgpu_base base;
