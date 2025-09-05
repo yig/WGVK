@@ -369,7 +369,6 @@ int main() {
     wgpuBufferRelease(adhocBuffer);
     wgpuBindGroupRelease(ctx->bind_group);
     wgpuSurfaceRelease(ctx->base.surface);
-    wgpuBindGroupLayoutRelease(bindGroupLayout);
     wgpuRenderPipelineRelease(ctx->pipeline);
     wgpuDeviceRelease(device);
     return 0;

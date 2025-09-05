@@ -6522,7 +6522,7 @@ RGAPI void ru_trackBindGroup(ResourceUsage* resourceUsage, WGPUBindGroup bindGro
 
 RGAPI void ru_trackBindGroupLayout (ResourceUsage* resourceUsage, WGPUBindGroupLayout bindGroupLayout){
     if(BindGroupLayoutUsageSet_add(&resourceUsage->referencedBindGroupLayouts, bindGroupLayout)){
-        ++bindGroupLayout->refCount;
+        wgpuBindGroupLayoutAddRef(bindGroupLayout);
     }
 }
 
@@ -6532,8 +6532,6 @@ RGAPI void ru_trackSampler         (ResourceUsage* resourceUsage, WGPUSampler sa
     }
 }
 
-
-
 typedef enum barrierType{
     bt_no_barrier = 0,
     bt_buffer_barrier = 1,
@@ -6541,6 +6539,7 @@ typedef enum barrierType{
     bt_image_barrier = 3,
     bt_force32 = 0x7fffffff
 } barrierType;
+
 typedef struct OptionalBarrier{
     barrierType type;
     VkPipelineStageFlags srcStage;
