@@ -33,38 +33,46 @@ jobs:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
+            build_type: Release
           # Ubuntu GCC
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
+            build_type: Release
           # Ubuntu clang
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
+            build_type: Release
           # MSYS2 MINGW64 + GCC
           - os: windows-latest
             c_compiler: gcc
             cpp_compiler: g++
+            build_type: Release
             msys2_env: MINGW64
           # MSYS2 MINGW64 + Clang
           - os: windows-latest
             c_compiler: clang
             cpp_compiler: clang++
+            build_type: Release
             msys2_env: MINGW64
           # MSYS2 UCRT64 + GCC
           - os: windows-latest
             c_compiler: gcc
             cpp_compiler: g++
+            build_type: Release
             msys2_env: UCRT64
           # MSYS2 UCRT64 + Clang
           - os: windows-latest
             c_compiler: clang
             cpp_compiler: clang++
+            build_type: Release
             msys2_env: UCRT64
           # MSYS2 CLANG64 + Clang
           - os: windows-latest
             c_compiler: clang
             cpp_compiler: clang++
+            build_type: Release
             msys2_env: CLANG64
         exclude:
           - os: windows-latest
