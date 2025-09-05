@@ -114,6 +114,7 @@ typedef void* (*wgvk_thread_func_t)(void*);
 int  wgvk_thread_create(wgvk_thread_t* thread, wgvk_thread_func_t func, void* arg);
 int  wgvk_thread_join  (wgvk_thread_t* thread, void** result);
 int  wgvk_thread_detach(wgvk_thread_t* thread);
+void wgvk_thread_yield (void);
 
 /* lock backend selection */
 typedef enum wgvk_locktype{

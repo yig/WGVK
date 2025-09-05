@@ -8767,7 +8767,15 @@ int wgvk_thread_detach(wgvk_thread_t* thread) {
     return 0;
 }
 
+void wgvk_thread_yield(void) {
+    SwitchToThread();
+}
+
 #else /* POSIX */
+
+void wgvk_thread_yield(void) {
+    sched_yield();
+}
 
 int wgvk_thread_create(wgvk_thread_t* thread, wgvk_thread_func_t func, void* arg) {
     if (!thread || !func) { errno = EINVAL; return -1; }

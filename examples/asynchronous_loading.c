@@ -1,5 +1,5 @@
-#include <threads.h>
 #include <wgvk.h>
+#include <wgvk_structs_impl.h>
 #include <external/volk.h>
 #include <stdio.h>
 #include <external/incbin.h>
@@ -221,7 +221,7 @@ int main(){
             allNonnull &= ((cpl[i] != NULL) ? 1u : 0u);
         }
         if(allNonnull)break;
-        thrd_yield();
+        wgvk_thread_yield();
     }
     //WGPUComputePipeline cpl = wgpuDeviceCreateComputePipeline(device, &cplDesc);
     
